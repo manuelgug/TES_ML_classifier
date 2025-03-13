@@ -3,8 +3,10 @@ library(dplyr)
 
 
 data <- read.csv("genomic_updated.csv")
-
 data <- data %>% rename(sample_id = sampleID)
+
+metadata_updated <- read.csv("metadata_updated.csv")
+metadata_updated$NIDA <- as.character(metadata_updated$NIDA)
 
 
 # set MOIRE parameters
@@ -24,9 +26,18 @@ saveRDS(mcmc_results, "coi_mcmc.RDS") # save checkpoint ffs
 
 
 # extract ecoi
-
 mcmc_results <- readRDS("coi_mcmc.RDS")
 
 coi_stats <- merge(summarize_effective_coi(mcmc_results), summarize_coi(mcmc_results), by = "sample_id")
+coi_stats <- coi_stats %>% rename(NIDA = sample_id)
 
 write.csv(coi_stats, "coi_stats.csv", row.names = F)
+
+
+# update metadata
+coi_stats$NIDA <- gsub("__.*", "", coi_stats$NIDA)
+metadata_updated <- merge(metadata_updated, coi_stats, by = c("NIDA"))
+metadata_updated <- metadata_updated %>% arrange(SampleID)
+
+write.csv(metadata_updated, "metadata_updated.csv", row.names = F)
+
