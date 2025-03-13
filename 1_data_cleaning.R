@@ -17,6 +17,8 @@ min_allele_read_count <- 10
 
 #import metadata
 metadata <- read.csv(metadata_file)
+metadata$NIDA <- as.character(metadata$NIDA)
+
 
 # import genomic data
 filtered_dirs <- list.dirs(main_dir, recursive = FALSE, full.names = TRUE)
@@ -50,6 +52,10 @@ merged_dfs <- merged_dfs %>%
   mutate(sampleID = gsub("N|_S.*$", "", sampleID),  # Remove "N" and everything after "_S"
          sampleID = if_else(str_detect(sampleID, "_"), sampleID, paste0(sampleID, ".0")),
          sampleID = gsub("_", ".", sampleID))  # change "_" for "."
+
+metadata <- metadata %>%
+  mutate(NIDA = gsub("N|_S.*$", "", NIDA),  # Remove "N" and everything after "_S"
+         NIDA = if_else(!str_detect(NIDA, "\\."), paste0(NIDA, ".0"), NIDA))  # If no ".", add ".0"
 
 
 # subset genomic data
