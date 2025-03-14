@@ -88,9 +88,6 @@ gc()
 saveRDS(merged_dfs, "PAIRS_GENOMIC.RDS")
 
 
-a <- merged_dfs %>% group_by(time_point) %>% summarise(list(unique(unique(NIDA))))
-a$`list(unique(unique(NIDA)))`[1]
-
 ############################################
 ### COMPARE ALLELE CONTENT OF PAIRS
 
@@ -167,7 +164,7 @@ MIXES_METADATA <- MIXES_METADATA %>%
   ungroup()
 
 #add strain content of each control
-PAIRS <- merge(PAIRS, MIXES_METADATA[c("NIDA", "STRAINS")], by = "NIDA")
+PAIRS <- merge(pairs_df, MIXES_METADATA[c("NIDA", "STRAINS")], by = "NIDA")
 PAIRS <- PAIRS%>%
   arrange(PairsID, time_point)
 
