@@ -88,8 +88,6 @@ for (i in seq_len(nrow(same_clones))) {
   }
 }
 
-groups
-
 # Remove the first element from each group, this is not gonna be removed from the data (it's the representative sample from each group of identical clones)
 groups <- lapply(groups, function(x) x[-1])
 
