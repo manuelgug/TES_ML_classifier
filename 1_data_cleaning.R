@@ -157,6 +157,31 @@ selected_amps <- amps_data[amps_data$in_n_samples == max(amps_data$in_n_samples)
 # subset data based on amplicons
 merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$locus %in% selected_amps,]
 
+# calculate heterozygosity of loci and remove those with He = 0
+heterozygosity_per_sample <- merged_dfs_agg %>% #Compute Hₑ per sample per locus
+  group_by(sampleID, locus) %>%
+  mutate(freq = norm.reads.locus / sum(norm.reads.locus, na.rm = TRUE)) %>%
+  summarise(
+    heterozygosity = 1 - sum(freq^2, na.rm = TRUE), 
+    .groups = "drop"
+  )
+
+variability_per_locus <- heterozygosity_per_sample %>% # Compute variability (SD, CV) across samples for each locus
+  group_by(locus) %>%
+  summarise(
+    mean_He = mean(heterozygosity, na.rm = TRUE),
+    sd_He = sd(heterozygosity, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(mean_He)  # Rank by SD (or use desc(cv_He) for relative variability)
+
+hist(variability_per_locus$mean_He)
+
+# keep amplicons with mean He above 10%
+amps_above_10perc_mean_He <- variability_per_locus[variability_per_locus$mean_He > 0.1,]$locus 
+
+# subset data based on amplicons
+merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$locus %in% amps_above_10perc_mean_He,]
 
 
 ####### 5) CHECKS --------
