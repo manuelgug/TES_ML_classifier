@@ -1,3 +1,4 @@
+
 library(moire)
 library(dplyr)
 
@@ -25,7 +26,7 @@ mcmc_results <- moire::run_mcmc(
 saveRDS(mcmc_results, "coi_mcmc.RDS") # save checkpoint ffs
 
 
-# extract ecoi
+# extract ecoi and naive coi
 mcmc_results <- readRDS("coi_mcmc.RDS")
 
 coi_stats <- merge(summarize_effective_coi(mcmc_results), summarize_coi(mcmc_results), by = "sample_id")
