@@ -1,4 +1,5 @@
 
+
 library(data.table)
 library(dplyr)
 library(progress)
@@ -8,6 +9,7 @@ library(igraph)
 library(Matrix)
 library(reshape2)
 library(tidyr)
+library(purrr)
 
 
 
@@ -361,37 +363,43 @@ dres0 <- ibdDat(dsmp, coi, afreq, pval = TRUE, confint = TRUE, rnull = 0,
 gc()
 
 dres0_long <- melt(dres0)
+dres0_long$value <- ifelse(dres0_long$Var1 == dres0_long$Var2, 1, dres0_long$value) # put 1 if the sample is compared with itself
+
 dres0_long <- dres0_long[dres0_long$Var3 == "estimate" & !is.na(dres0_long$value),]
-dres0_long <- dres0_long[,-3]
+dres0_long <- dres0_long %>% select(-Var3)
 colnames(dres0_long) <- c("infection1", "infection2", "IBD_estimate")
 
-# add pairsID column
-paired_samples_reshaped <- PAIRS_METADATA_dt %>%
-  select(PairsID, NIDA, time_point) %>%
-  pivot_wider(names_from = time_point, values_from = NIDA, values_fn = list) %>%
-  unnest(c(D0, Dx))
+# # add pairsID column
+# paired_samples_reshaped <- PAIRS_METADATA_dt %>%
+#   select(PairsID, NIDA, time_point) %>%
+#   pivot_wider(names_from = time_point, values_from = NIDA, values_fn = list) %>%
+#   unnest(c(D0, Dx))
 
 
 # First match: D0 with infection1 and Dx with infection2
-match1 <- paired_samples_reshaped %>%
-  left_join(dres0_long, by = c("D0" = "infection1", "Dx" = "infection2")) %>%
-  select(PairsID, D0, Dx, IBD_estimate)
+match1 <- PAIRS_METADATA_dt %>%
+  left_join(dres0_long, by = c("NIDA1" = "infection1", "NIDA2" = "infection2")) %>%
+  select(PairsID, NIDA1, NIDA2, IBD_estimate)
 
 match1 <- match1[!is.na(match1$IBD_estimate),]
 
+
 # Second match: Dx with infection1 and D0 with infection2
-match2 <- paired_samples_reshaped %>%
-  left_join(dres0_long, by = c("Dx" = "infection1", "D0" = "infection2")) %>%
-  select(PairsID, D0, Dx, IBD_estimate)
+match2 <- PAIRS_METADATA_dt %>%
+  left_join(dres0_long, by = c("NIDA2" = "infection1", "NIDA1" = "infection2")) %>%
+  select(PairsID, NIDA1, NIDA2, IBD_estimate)
 
 match2 <- match2[!is.na(match2$IBD_estimate),]
 
 
 dres0_long_final<- rbind(match1, match2)
+dres0_long_final <- distinct(dres0_long_final)
 
 dres0_long_final_summarized <- dres0_long_final %>%
   select(PairsID, IBD_estimate) %>%
   arrange(PairsID)
+
+dres0_long_final_summarized[complete.cases(dres0_long_final_summarized),]
 
 write.csv(dres0_long_final_summarized, "IBD_features.csv", row.names = F)
 
@@ -412,9 +420,9 @@ all_Feats_merged_df <- reduce(all_Feats, full_join, by = "PairsID")
 
 
 # Merge features with metadata
-PAIRS_METADATA$PairsID <- as.character(metadata$PairsID)
-all_Feats_merged_df <- inner_join(all_Feats_merged_df, metadata, by = "PairsID")
+PAIRS_METADATA$PairsID <- as.character(PAIRS_METADATA$PairsID)
+all_Feats_merged_df <- inner_join(all_Feats_merged_df, PAIRS_METADATA, by = "PairsID")
 
 ## OUTPUT
-write.csv(all_Feats_merged_df, "FINAL_FEATURES.csv", row.names = F)
+write.csv(all_Feats_merged_df, "TRAINING_DATA.csv", row.names = F)
 
