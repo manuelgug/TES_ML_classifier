@@ -17,14 +17,14 @@ TRAINING_DATA <- read.csv("TRAINING_DATA.csv", row.names = 1)
 LABELS <- data.frame(labels = TRAINING_DATA$labels)
 #LABELS$labels <- ifelse(FEATS_LABELS_FINAL$labels == 'NI', 0, ifelse(FEATS_LABELS_FINAL$labels == 'R', 1, FEATS_LABELS_FINAL$labels))
 
-TRAINING_DATA <-TRAINING_DATA %>% select(1:which(names(TRAINING_DATA) == "IBD_estimate"))
+TRAINING_DATA_EDA <-TRAINING_DATA %>% select(1:which(names(TRAINING_DATA) == "IBD_estimate"))
 
 
 
 ######  2) CORRPLOT AND REMOVAL OF CORELATED VARIABLES ---------
 
 # check correlations between variables
-cor_var <-cor(TRAINING_DATA, method = "spearman")
+cor_var <-cor(TRAINING_DATA_EDA, method = "spearman")
 corrplot_Feats <- corrplot(cor_var, method = "pie")
 
 
@@ -43,18 +43,18 @@ high_correlations_df <- data.frame(
 )
 
 # Select variables based on the high correlation data frame
-TRAINING_DATA <- TRAINING_DATA[, !colnames(TRAINING_DATA) %in% high_correlations_df$var2] # COULD BE EITHER VAR1 OR VAR2, IT'S THE SAME, JUST KEEP ONE
+TRAINING_DATA_EDA <- TRAINING_DATA_EDA[, !colnames(TRAINING_DATA_EDA) %in% high_correlations_df$var2] # COULD BE EITHER VAR1 OR VAR2, IT'S THE SAME, JUST KEEP ONE
 
 
 
 ###### 3) DISTRIBUTIONS -------------------
 
 # Reshape the data for faceted histograms
-TRAINING_DATA_long <- TRAINING_DATA %>%
+TRAINING_DATA_EDA_long <- TRAINING_DATA_EDA %>%
   pivot_longer(cols = everything(), names_to = "Feature", values_to = "Value")
 
 # Adjust the histogram creation to better handle distributions
-distributions <- ggplot(TRAINING_DATA_long, aes(x = Value)) +
+distributions <- ggplot(TRAINING_DATA_EDA_long, aes(x = Value)) +
   geom_histogram(fill = "steelblue", color = "black", bins = 30) + # Adjust bin count for better resolution
   facet_wrap(~ Feature, scales = "free", ncol = 3) + # "free" scales for better visualization
   labs(title = "", x = "Value", y = "Count") +
@@ -72,13 +72,13 @@ ggsave("training_data_EDA_distributions.png", distributions, bg = "white", heigh
 num_cores <- 17
 
 # Function to perform bootstrapping with varying sample sizes in parallel
-bootstrap_convergence <- TRAINING_DATA %>%
+bootstrap_convergence <- TRAINING_DATA_EDA %>%
   pivot_longer(cols = everything(), names_to = "Feature", values_to = "Value") %>%
   group_by(Feature) %>%
   summarize(
     bootstrap_medians_mean_by_size = list(
       mclapply(
-        seq(0, nrow(TRAINING_DATA), 2500),
+        seq(0, nrow(TRAINING_DATA_EDA), 2500),
         FUN = function(sample_size) {
           tibble(
             sample_size = sample_size,
@@ -132,10 +132,10 @@ perform_w_test_and_medians <- function(variable) {
 }
 
 # Apply the function to each variable
-p_values_and_medians <- TRAINING_DATA %>% 
+p_values_and_medians <- TRAINING_DATA_EDA %>% 
   map_dfr(perform_w_test_and_medians)
 
-wilcox_results <- data.frame(Feature = colnames(TRAINING_DATA), p_values_and_medians)
+wilcox_results <- data.frame(Feature = colnames(TRAINING_DATA_EDA), p_values_and_medians)
 
 plot_list <- list()
 
@@ -153,7 +153,7 @@ for (feature in wilcox_results$Feature) {
     signif_label <- "ns"
   }
   
-  p <- ggplot(cbind(TRAINING_DATA, LABELS), aes_string(x = "labels", y = feature, fill = "labels")) +
+  p <- ggplot(cbind(TRAINING_DATA_EDA, LABELS), aes_string(x = "labels", y = feature, fill = "labels")) +
     geom_boxplot() +
     labs(title = "",
          x = "",
@@ -166,11 +166,11 @@ for (feature in wilcox_results$Feature) {
     # Add Wilcoxon significance bracket with asterisks
     geom_signif(comparisons = list(c("NI", "R")), 
                 annotations = signif_label,
-                y_position = max(TRAINING_DATA[[feature]], na.rm = TRUE) * 1.1,
+                y_position = max(TRAINING_DATA_EDA[[feature]], na.rm = TRUE) * 1.1,
                 tip_length = 0.03) +
     
     # Increase ylim to ensure space for annotations
-    ylim(0, max(TRAINING_DATA[[feature]], na.rm = TRUE) * 1.3)  # Increase y-axis limit for space
+    ylim(0, max(TRAINING_DATA_EDA[[feature]], na.rm = TRUE) * 1.3)  # Increase y-axis limit for space
   
   plot_list[[feature]] <- p
 }
@@ -183,14 +183,14 @@ ggsave("training_data_EDA_boxplots.png", var_boxplots, width = 12, height = 12, 
 # remove non significant features
 non_significant_features <- wilcox_results[wilcox_results$P_Value > 0.05,]$Feature
 
-TRAINING_DATA <- TRAINING_DATA[,!colnames(TRAINING_DATA) %in% non_significant_features]
+TRAINING_DATA_EDA <- TRAINING_DATA_EDA[,!colnames(TRAINING_DATA_EDA) %in% non_significant_features]
 
 
 
 ###### 6) UMAP --------
 
 # scale data
-data_scaled <- scale(TRAINING_DATA)
+data_scaled <- scale(TRAINING_DATA_EDA)
 
 #umap
 set.seed(42069)
@@ -247,7 +247,7 @@ for (k in K_RANGE){
   # umap_df$labels <- LABELS$labels
   
   # # describe the clusters
-  clusters_df <- cbind(Cluster = umap_df$Cluster, TRAINING_DATA)
+  clusters_df <- cbind(Cluster = umap_df$Cluster, TRAINING_DATA_EDA)
   
   # Convert data to long format for easier plotting
   long_df <- clusters_df %>%
@@ -296,3 +296,16 @@ for (k in K_RANGE){
   
 }
   
+
+
+###### 8) CLEAN EXPORTS ----------
+
+before_cols <- colnames(TRAINING_DATA[,1:which(names(TRAINING_DATA) == "IBD_estimate")]) # assumes ibd_Estimate is kept!
+after_cols <- colnames(TRAINING_DATA_EDA[,1:which(names(TRAINING_DATA_EDA) == "IBD_estimate")]) # assumes ibd_Estimate is kept!
+
+cols_to_remove <- setdiff(before_cols, after_cols)
+
+#remove shit features
+TRAINING_DATA <- TRAINING_DATA %>% select(-cols_to_remove)
+
+write.csv(TRAINING_DATA, "TRAINING_DATA_CLEAN.csv", row.names = F)
