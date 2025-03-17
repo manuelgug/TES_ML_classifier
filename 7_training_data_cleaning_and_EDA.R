@@ -231,6 +231,38 @@ ggsave("training_data_EDA_umap.png", p, width = 10, height = 8, bg = "white")
 
 
 
+#per variable coloring
+variables <- colnames(TRAINING_DATA_EDA)
+
+plot_list <- list()
+
+for (var in variables) {
+  pl <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2)) +
+    geom_point(aes_string(color = var, size = "UMAP3"), alpha = 0.25, data = cbind(umap_df, TRAINING_DATA_EDA[var])) +
+    scale_color_gradient(low = "green", high = "red",) +
+    scale_size_continuous(range = c(1, 3)) +
+    labs(title = var,
+         x = "UMAP1",
+         y = "UMAP2",
+         color = var) +
+    theme_minimal() +
+    theme(legend.position = "right",
+          legend.title = element_blank(),  # This removes the legend title
+          legend.text = element_text(size = 10),
+          legend.box = "horizontal") +
+    guides(size = "none")
+  
+  plot_list[[var]] <- pl
+}
+
+final_plot <- wrap_plots(plot_list, ncol = round(sqrt(length(variables)), 0))
+final_plot
+
+ggsave("training_data_EDA_umap_feats.png", final_plot, width = 18, height = 12, bg = "white")
+
+
+
+
 ###### 7) K-MEANS ----------
 
 K_RANGE <- c(2, 3, 4, 5)
@@ -307,5 +339,10 @@ cols_to_remove <- setdiff(before_cols, after_cols)
 
 #remove shit features
 TRAINING_DATA <- TRAINING_DATA %>% select(-cols_to_remove)
+
+#order columns
+TRAINING_DATA$PairsID <- c(1:nrow(TRAINING_DATA))
+
+TRAINING_DATA <- TRAINING_DATA %>% select(PairsID, everything())
 
 write.csv(TRAINING_DATA, "TRAINING_DATA_CLEAN.csv", row.names = F)
