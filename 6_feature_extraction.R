@@ -37,19 +37,19 @@ calculate_features_optimized <- function(sample1, sample2) {
   m1 <- as.integer(all_alleles %in% alleles1)
   m2 <- as.integer(all_alleles %in% alleles2)
   
-  # Create frequency vectors
-  f1 <- numeric(length(all_alleles))
-  f2 <- numeric(length(all_alleles))
-  
-  match_alleles1 <- match(alleles1, all_alleles)
-  match_alleles2 <- match(alleles2, all_alleles)
-  
-  f1[match_alleles1] <- read_counts1
-  f2[match_alleles2] <- read_counts2
-  
-  # Normalize read counts (relative abundance per sample)
-  f1_norm <- f1 / sum(f1, na.rm = TRUE)
-  f2_norm <- f2 / sum(f2, na.rm = TRUE)
+  # # Create frequency vectors
+  # f1 <- numeric(length(all_alleles))
+  # f2 <- numeric(length(all_alleles))
+  # 
+  # match_alleles1 <- match(alleles1, all_alleles)
+  # match_alleles2 <- match(alleles2, all_alleles)
+  # 
+  # f1[match_alleles1] <- read_counts1
+  # f2[match_alleles2] <- read_counts2
+  # 
+  # # Normalize read counts (relative abundance per sample)
+  # f1_norm <- f1 / sum(f1, na.rm = TRUE)
+  # f2_norm <- f2 / sum(f2, na.rm = TRUE)
   
   # ---- Genetic Similarity Measures ---- #
   
@@ -57,12 +57,12 @@ calculate_features_optimized <- function(sample1, sample2) {
   shared_alleles_mask <- m1 & m2
   jaccard <- sum(shared_alleles_mask) / sum(m1 | m2)
   
-  # Manhattan distance
-  manhattan_dist <- sum(abs(f1_norm - f2_norm), na.rm = TRUE)
+  # # Manhattan distance
+  # manhattan_dist <- sum(abs(f1_norm - f2_norm), na.rm = TRUE)
   
-  # Cosine similarity
-  cosine_sim <- sum(f1_norm * f2_norm, na.rm = TRUE) / (sqrt(sum(f1_norm^2, na.rm = TRUE)) * sqrt(sum(f2_norm^2, na.rm = TRUE)))
-  
+  # # Cosine similarity
+  # cosine_sim <- sum(f1_norm * f2_norm, na.rm = TRUE) / (sqrt(sum(f1_norm^2, na.rm = TRUE)) * sqrt(sum(f2_norm^2, na.rm = TRUE)))
+
   # Bray-Curtis dissimilarity
   # bray_curtis <- 1 - (2 * sum(pmin(f1_norm, f2_norm), na.rm = TRUE) / (sum(f1_norm, na.rm = TRUE) + sum(f2_norm, na.rm = TRUE)))
   
@@ -95,8 +95,8 @@ calculate_features_optimized <- function(sample1, sample2) {
   
   return(c(
     jaccard_similarity = jaccard,
-    manhattan_distance = manhattan_dist,
-    cosine_similarity = cosine_sim,
+    # manhattan_distance = manhattan_dist,
+    # cosine_similarity = cosine_sim,
     #bray_curtis_dissimilarity = bray_curtis,
     allele_retention_rate = retention_rate,
     allele_gain = allele_gain
