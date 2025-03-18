@@ -8,7 +8,7 @@ library(stringr)
 
 main_dir <- "." # directory where all the filtered runs data are located
 metadata_file <- "Final_list_TES_Envio_ISG_INPUT_TABLE.csv" # should have the nidas, the timepoints and the pairs to which samples belong to
-maf_filter <- 0.017
+maf_filter <- 0.02
 min_allele_read_count <- 10 
 
 
@@ -173,15 +173,18 @@ variability_per_locus <- heterozygosity_per_sample %>% # Compute variability (SD
     sd_He = sd(heterozygosity, na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  arrange(mean_He)  # Rank by SD (or use desc(cv_He) for relative variability)
+  arrange(-mean_He)  # Rank by SD (or use desc(cv_He) for relative variability)
 
 hist(variability_per_locus$mean_He)
 
 # keep amplicons with mean He above 10%
-amps_above_10perc_mean_He <- variability_per_locus[variability_per_locus$mean_He > 0.1,]$locus 
+# top_var_amps <- variability_per_locus[variability_per_locus$mean_He > 0.1,]$locus 
+
+# keep top 50 most variable amps
+top_var_amps <- variability_per_locus[1:50,]$locus
 
 # subset data based on amplicons
-merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$locus %in% amps_above_10perc_mean_He,]
+merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$locus %in% top_var_amps,]
 
 
 ####### 5) CHECKS --------
@@ -195,3 +198,4 @@ length(unique(merged_dfs_agg$locus)) # amplicons shared by all nidas
 
 write.csv(merged_dfs_agg, "genomic_updated.csv", row.names = F)
 write.csv(metadata_updated, "metadata_updated.csv", row.names = F)
+
