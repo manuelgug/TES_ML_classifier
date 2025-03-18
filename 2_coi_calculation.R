@@ -6,8 +6,7 @@ library(dplyr)
 data <- read.csv("genomic_updated.csv")
 data <- data %>% rename(sample_id = sampleID)
 
-metadata_updated <- read.csv("metadata_updated.csv")
-metadata_updated$NIDA <- as.character(metadata_updated$NIDA)
+metadata_updated <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
 
 # set MOIRE parameters
