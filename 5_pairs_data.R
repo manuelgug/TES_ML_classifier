@@ -71,19 +71,9 @@ pairs_df <- pairs_df %>%
 colnames(MIXES_GENOMIC)[colnames(MIXES_GENOMIC) == "mixID"] <- "NIDA"
 merged_dfs <-  left_join(pairs_df, MIXES_GENOMIC, by = "NIDA")
 
+length(unique(merged_dfs$PairsID))
+
 gc()
-
-# #check
-# all(unique(PAIRS$NIDA) %in% unique(merged_dfs$NIDA))
-# all(unique(PAIRS$PairsID) %in% unique(merged_dfs$PairsID))
-# 
-# all(unique(merged_dfs$NIDA) %in% unique(PAIRS$NIDA))
-# all(unique(merged_dfs$PairsID) %in% unique(PAIRS$PairsID))
-# 
-# length(unique(merged_dfs$PairsID))
-# 
-# gc()
-
 
 saveRDS(merged_dfs, "PAIRS_GENOMIC.RDS")
 
@@ -140,9 +130,6 @@ shared_alleles_distribution <- ggplot(alleles_shared_prop, aes(x = pair_type, y 
 shared_alleles_distribution
 
 ggsave("Prop_Alleles_Shared_by_Mix_Type.png", shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
-
-
-
 
 
 
