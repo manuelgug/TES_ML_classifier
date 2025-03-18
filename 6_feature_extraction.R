@@ -12,31 +12,46 @@ library(tidyr)
 library(purrr)
 
 
-# for the training data:
-PAIRS_METADATA <- readRDS("PAIRS_METADATA.RDS")
-PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC.RDS")
-
-PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
-PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
+#select data type betweem "training_data" or "real_data"
+DATA_TYPE = "REAL_DATA"
 
 
-#the actual data
-PAIRS_GENOMIC <- read.csv("genomic_updated.csv")
-PAIRS_METADATA <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+if (DATA_TYPE == "TRAINING_DATA") {
+  
+  # for the training data:
+  PAIRS_METADATA <- readRDS("PAIRS_METADATA.RDS")
+  PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC.RDS")
+  
+  PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
+  PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
+  
+} else if (DATA_TYPE == "REAL_DATA") {
+  
+  #the actual data
+  PAIRS_GENOMIC <- read.csv("genomic_updated.csv")
+  PAIRS_METADATA <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+  
+  PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
+  PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
+  
+  
+  PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(NIDA = sampleID) # format genomic file
+  PAIRS_GENOMIC <- PAIRS_GENOMIC %>%
+    separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE)
+  PAIRS_GENOMIC <- inner_join(PAIRS_METADATA, PAIRS_GENOMIC, by = "NIDA")
+  
+  PAIRS_METADATA <- PAIRS_METADATA %>% select(PairsID, NIDA, time_point) # format metadata file
+  PAIRS_METADATA <- PAIRS_METADATA %>%
+    pivot_wider(names_from = time_point, values_from = NIDA, names_prefix = "NIDA") %>%
+    rename(NIDA1 = NIDAD0, NIDA2 = NIDADx)
+  
+} else {
+  
+  print("Incorrect data type. Options are 'TRAINING_DATA' and 'REAL_DATA'.")
+  
+}
 
-PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
-PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
 
-
-PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(NIDA = sampleID) # format genomic file
-PAIRS_GENOMIC <- PAIRS_GENOMIC %>%
-  separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE)
-PAIRS_GENOMIC <- inner_join(PAIRS_METADATA, PAIRS_GENOMIC, by = "NIDA")
-
-PAIRS_METADATA <- PAIRS_METADATA %>% select(PairsID, NIDA, time_point) # format metadata file
-PAIRS_METADATA <- PAIRS_METADATA %>%
-  pivot_wider(names_from = time_point, values_from = NIDA, names_prefix = "NIDA") %>%
-  rename(NIDA1 = NIDAD0, NIDA2 = NIDADx)
 
 
 
@@ -151,7 +166,7 @@ pb <- progress_bar$new(
 )
 
 # Temporary file for writing output
-output_file <- "delta_features_TES.csv"
+output_file <- paste0("delta_features_", DATA_TYPE, ".csv")
 
 # Function to process each pair
 process_pair <- function(pair_id) {
@@ -202,12 +217,12 @@ for (i in seq(1, length(unique_pairs), by = chunk_size)) {
   pb$tick()
 }
 
-delta_metrics_df_final <- read.csv("delta_features.csv")
+delta_metrics_df_final <- read.csv(paste0("delta_features_", DATA_TYPE, ".csv"))
 
 delta_metrics_df_final <- delta_metrics_df_final %>%
   select(PairsID, everything())
 
-write.csv(delta_metrics_df_final, "delta_features.csv", row.names = F)
+write.csv(delta_metrics_df_final, paste0("delta_features_", DATA_TYPE, ".csv"), row.names = F)
 
 # free RAM
 rm(pairs_to_d0, pairs_to_dx, delta_metrics_df_final)
@@ -260,7 +275,7 @@ cat("Calculated co-occurrence matrices for", length(dcasted_list), "pairs")
 
 
 #checkpoint
-saveRDS(dcasted_list, "coocurrence_matrices.RDS")
+saveRDS(dcasted_list, paste0("coocurrence_matrices_", DATA_TYPE, ".RDS"))
 # dcasted_list <- readRDS(paste0(outprefix, "_coocurrence_matrices.RDS"))
 
 pair_ids <- names(dcasted_list)
@@ -332,7 +347,7 @@ write_chunk_to_csv <- function(data, file_path, append = FALSE) {
 gc()
 
 # Temporary file for writing
-output_file <- "network_features.csv"
+output_file <- paste0("network_features_", DATA_TYPE, ".csv")
 
 # Process pair_ids in chunks
 for (i in seq(1, length(pair_ids), by = chunk_size)) {
@@ -357,12 +372,12 @@ for (i in seq(1, length(pair_ids), by = chunk_size)) {
   pb$tick()
 }
 
-network_metrics_df_final <- read.csv("network_features.csv")
+network_metrics_df_final <- read.csv(paste0("network_features_", DATA_TYPE, ".csv"))
 
 network_metrics_df_final <- network_metrics_df_final %>%
   select(PairsID, everything())
 
-write.csv(network_metrics_df_final, "network_features.csv", row.names = F)
+write.csv(network_metrics_df_final, paste0("network_features_", DATA_TYPE, ".csv"), row.names = F)
 
 gc()
 
@@ -383,18 +398,24 @@ dres0 <- ibdDat(dsmp, coi, afreq, pval = TRUE, confint = TRUE, rnull = 0,
 
 gc()
 
-dres0_long <- melt(dres0)
+suppressWarnings({
+  dres0_long <- melt(dres0)
+})
 dres0_long$value <- ifelse(dres0_long$Var1 == dres0_long$Var2, 1, dres0_long$value) # put 1 if the sample is compared with itself
+
+#need extra foramtting for real data after passing through dcifer because the nidas...
+if (DATA_TYPE == "REAL_DATA"){
+  
+  dres0_long$Var1 <- as.character(dres0_long$Var1)
+  dres0_long$Var2 <- as.character(dres0_long$Var2)
+  dres0_long <- dres0_long %>%
+    mutate(Var1 = if_else(!str_detect(Var1, "\\."), paste0(Var1, ".0"), Var1),
+           Var2 = if_else(!str_detect(Var2, "\\."), paste0(Var2, ".0"), Var2))  # If no ".", add ".0"
+}
 
 dres0_long <- dres0_long[dres0_long$Var3 == "estimate" & !is.na(dres0_long$value),]
 dres0_long <- dres0_long %>% select(-Var3)
 colnames(dres0_long) <- c("infection1", "infection2", "IBD_estimate")
-
-# # add pairsID column
-# paired_samples_reshaped <- PAIRS_METADATA %>%
-#   select(PairsID, NIDA, time_point) %>%
-#   pivot_wider(names_from = time_point, values_from = NIDA, values_fn = list) %>%
-#   unnest(c(D0, Dx))
 
 
 # First match: D0 with infection1 and Dx with infection2
@@ -412,7 +433,6 @@ match2 <- PAIRS_METADATA %>%
 
 match2 <- match2[!is.na(match2$IBD_estimate),]
 
-
 dres0_long_final<- rbind(match1, match2)
 dres0_long_final <- distinct(dres0_long_final)
 
@@ -422,15 +442,15 @@ dres0_long_final_summarized <- dres0_long_final %>%
 
 dres0_long_final_summarized[complete.cases(dres0_long_final_summarized),]
 
-write.csv(dres0_long_final_summarized, "IBD_features.csv", row.names = F)
+write.csv(dres0_long_final_summarized, paste0("IBD_features_", DATA_TYPE, ".csv"), row.names = F)
 
 
 
 ###### MERGE FEATURES ###### ----------------
 
-network_features <- read.csv("network_features.csv")
-delta_features <- read.csv("delta_features.csv")
-ibd_features <- read.csv("IBD_features.csv")
+network_features <- read.csv(paste0("network_features_", DATA_TYPE, ".csv"))
+delta_features <- read.csv(paste0("delta_features_", DATA_TYPE, ".csv"))
+ibd_features <- read.csv(paste0("IBD_features_", DATA_TYPE, ".csv"))
 
 # List of data frames to be merged
 all_Feats <- list(delta_features, network_features, ibd_features)
@@ -439,11 +459,14 @@ all_Feats <- map(all_Feats, ~ .x %>% mutate(PairsID = as.character(PairsID)))
 # Merge all data frames by PairsID
 all_Feats_merged_df <- reduce(all_Feats, full_join, by = "PairsID")
 
-
-# Merge features with metadata
-PAIRS_METADATA$PairsID <- as.character(PAIRS_METADATA$PairsID)
-all_Feats_merged_df <- inner_join(all_Feats_merged_df, PAIRS_METADATA, by = "PairsID")
+#extra formatting if training data in order to add metadata (labels basically)
+if(DATA_TYPE == "TRAINING_DATA"){
+  
+  # Merge features with metadata
+  PAIRS_METADATA$PairsID <- as.character(PAIRS_METADATA$PairsID)
+  all_Feats_merged_df <- inner_join(all_Feats_merged_df, PAIRS_METADATA, by = "PairsID")
+  
+}
 
 ## OUTPUT
-write.csv(all_Feats_merged_df, "TRAINING_DATA.csv", row.names = F)
-
+write.csv(all_Feats_merged_df, paste0(DATA_TYPE,".csv"), row.names = F)
