@@ -256,7 +256,6 @@ for (var in variables) {
 }
 
 final_plot <- wrap_plots(plot_list, ncol = round(sqrt(length(variables)), 0))
-final_plot
 
 ggsave("training_data_EDA_umap_feats.png", final_plot, width = 18, height = 12, bg = "white")
 
@@ -265,7 +264,7 @@ ggsave("training_data_EDA_umap_feats.png", final_plot, width = 18, height = 12, 
 
 ###### 7) K-MEANS ----------
 
-K_RANGE <- c(2, 3, 4, 5)
+K_RANGE <- c(2, 3, 4)
 
 for (k in K_RANGE){
   
