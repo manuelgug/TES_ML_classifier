@@ -102,3 +102,4 @@ clones_genomic <- clones_genomic[!clones_genomic$sampleID %in% clones_to_remove,
 ###### 4) EXPORT CLONE DATA
 
 write.csv(clones_genomic, "clones_genomic_data.csv", row.names = F)
+
