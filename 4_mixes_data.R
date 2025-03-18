@@ -2,6 +2,7 @@
 
 library(dplyr)
 library(tidyr)
+library(ggplot2)
 
 
 clones_genomic <- read.csv("clones_genomic_data.csv")
@@ -16,7 +17,7 @@ max_coi <- round(max(metadata_updated$post_effective_coi_med))
 
 
 
-###### 2) CREATE ALL POSSIBLE MIXES FROM 1 TO 5 STRAINS -----
+###### 2) CREATE ALL POSSIBLE MIXES FROM min_coi TO max_coi STRAINS -----
 
 # Load unique strains into vector
 nidas <- unique(clones_genomic$sampleID)
@@ -53,9 +54,10 @@ strain_mixes <- strain_mixes[sort(names(strain_mixes))]
 ####### 3) SUBSAMPLE THE MIXES -------
 
 # Define the initial sample size from the first data frame
-initial_sample_size <- nrow(strain_mixes$mix_1)
+initial_sample_size <- nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
 sample_size <- initial_sample_size
 
+sample_size
 
 # Loop over each data frame in strain_mixes and apply the subsampling
 strain_mixes_subsampled <- list()
@@ -79,11 +81,6 @@ for (i in 1:n_strains) {
 # check
 lapply(strain_mixes_subsampled, nrow)
 
-
-
-# ###### 4) OUTPUT MIXES------
-# 
-# saveRDS(strain_mixes_subsampled, "mixes_list.RDS")
 
 
 ##### 4) CREATE PAIRS ------
