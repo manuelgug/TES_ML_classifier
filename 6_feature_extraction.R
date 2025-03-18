@@ -12,12 +12,32 @@ library(tidyr)
 library(purrr)
 
 
-
+# for the training data:
 PAIRS_METADATA <- readRDS("PAIRS_METADATA.RDS")
 PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC.RDS")
 
 PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
 PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
+
+
+#the actual data
+PAIRS_GENOMIC <- read.csv("genomic_updated.csv")
+PAIRS_METADATA <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+
+PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
+PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
+
+
+PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(NIDA = sampleID) # format genomic file
+PAIRS_GENOMIC <- PAIRS_GENOMIC %>%
+  separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE)
+PAIRS_GENOMIC <- inner_join(PAIRS_METADATA, PAIRS_GENOMIC, by = "NIDA")
+
+PAIRS_METADATA <- PAIRS_METADATA %>% select(PairsID, NIDA, time_point) # format metadata file
+PAIRS_METADATA <- PAIRS_METADATA %>%
+  pivot_wider(names_from = time_point, values_from = NIDA, names_prefix = "NIDA") %>%
+  rename(NIDA1 = NIDAD0, NIDA2 = NIDADx)
+
 
 
 ####### DIVERSITY/DELTA FEATURES #######------------------
@@ -131,7 +151,7 @@ pb <- progress_bar$new(
 )
 
 # Temporary file for writing output
-output_file <- "delta_features.csv"
+output_file <- "delta_features_TES.csv"
 
 # Function to process each pair
 process_pair <- function(pair_id) {
