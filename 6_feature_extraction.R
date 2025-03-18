@@ -16,8 +16,8 @@ library(purrr)
 PAIRS_METADATA <- readRDS("PAIRS_METADATA.RDS")
 PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC.RDS")
 
-PAIRS_GENOMIC_dt <- as.data.table(PAIRS_GENOMIC)
-PAIRS_METADATA_dt <- as.data.table(PAIRS_METADATA)
+PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
+PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
 
 
 ####### DIVERSITY/DELTA FEATURES #######------------------
@@ -64,7 +64,7 @@ calculate_features_optimized <- function(sample1, sample2) {
   cosine_sim <- sum(f1_norm * f2_norm, na.rm = TRUE) / (sqrt(sum(f1_norm^2, na.rm = TRUE)) * sqrt(sum(f2_norm^2, na.rm = TRUE)))
   
   # Bray-Curtis dissimilarity
-  bray_curtis <- 1 - (2 * sum(pmin(f1_norm, f2_norm), na.rm = TRUE) / (sum(f1_norm, na.rm = TRUE) + sum(f2_norm, na.rm = TRUE)))
+  # bray_curtis <- 1 - (2 * sum(pmin(f1_norm, f2_norm), na.rm = TRUE) / (sum(f1_norm, na.rm = TRUE) + sum(f2_norm, na.rm = TRUE)))
   
   # ---- Allele Dynamics Features ---- #
   
@@ -77,19 +77,19 @@ calculate_features_optimized <- function(sample1, sample2) {
   
   # Allele gain and loss
   allele_gain <- sum(m2 & !m1) / sum(m1 | m2)  # Fraction of new alleles
-  allele_loss <- sum(m1 & !m2) / sum(m1 | m2)  # Fraction of lost alleles
+  # allele_loss <- sum(m1 & !m2) / sum(m1 | m2)  # Fraction of lost alleles
   
   # ---- Diversity Change Features ---- #
   
-  # Shannon diversity index
-  shannon_div1 <- -sum(f1_norm * log(f1_norm + 1e-10), na.rm = TRUE)
-  shannon_div2 <- -sum(f2_norm * log(f2_norm + 1e-10), na.rm = TRUE)
-  shannon_diversity_change <- shannon_div2 - shannon_div1   # Change in SHannon div (ΔShannon)
-  
-  # Expected heterozygosity (He) per locus
-  heterozygosity1 <- 1 - mean(f1_norm^2, na.rm = TRUE)  # Mean He across loci for sample 1
-  heterozygosity2 <- 1 - mean(f2_norm^2, na.rm = TRUE)  # Mean He across loci for sample 2
-  heterozygosity_change <- heterozygosity2 - heterozygosity1   # Change in heterozygosity (ΔHe)
+  # # Shannon diversity index
+  # shannon_div1 <- -sum(f1_norm * log(f1_norm + 1e-10), na.rm = TRUE)
+  # shannon_div2 <- -sum(f2_norm * log(f2_norm + 1e-10), na.rm = TRUE)
+  # shannon_diversity_change <- shannon_div2 - shannon_div1   # Change in SHannon div (ΔShannon)
+  # 
+  # # Expected heterozygosity (He) per locus
+  # heterozygosity1 <- 1 - mean(f1_norm^2, na.rm = TRUE)  # Mean He across loci for sample 1
+  # heterozygosity2 <- 1 - mean(f2_norm^2, na.rm = TRUE)  # Mean He across loci for sample 2
+  # heterozygosity_change <- heterozygosity2 - heterozygosity1   # Change in heterozygosity (ΔHe)
   
   # ---- Return All Features ---- #
   
@@ -97,25 +97,25 @@ calculate_features_optimized <- function(sample1, sample2) {
     jaccard_similarity = jaccard,
     manhattan_distance = manhattan_dist,
     cosine_similarity = cosine_sim,
-    bray_curtis_dissimilarity = bray_curtis,
+    #bray_curtis_dissimilarity = bray_curtis,
     allele_retention_rate = retention_rate,
-    allele_gain = allele_gain,
-    allele_loss = allele_loss,
-    shannon_diversity_change = shannon_diversity_change,
-    heterozygosity_change = heterozygosity_change
+    allele_gain = allele_gain
+    #allele_loss = allele_loss,
+    #shannon_diversity_change = shannon_diversity_change,
+    #heterozygosity_change = heterozygosity_change
   ))
 }
 
 
 # Extract unique pairs once
-unique_pairs <- unique(PAIRS_METADATA_dt$PairsID)
+unique_pairs <- unique(PAIRS_METADATA$PairsID)
 
 # Create a named vector for mapping PairsID to D0 and Dx for faster access
-pairs_to_d0 <- PAIRS_METADATA_dt$NIDA1[match(unique_pairs, PAIRS_METADATA_dt$PairsID)]
-pairs_to_dx <- PAIRS_METADATA_dt$NIDA2[match(unique_pairs, PAIRS_METADATA_dt$PairsID)]
+pairs_to_d0 <- PAIRS_METADATA$NIDA1[match(unique_pairs, PAIRS_METADATA$PairsID)]
+pairs_to_dx <- PAIRS_METADATA$NIDA2[match(unique_pairs, PAIRS_METADATA$PairsID)]
 
 # Preprocess merged_dfs_filtered into a list for fast access
-merged_dfs_filtered <- split(PAIRS_GENOMIC_dt, PAIRS_GENOMIC_dt$NIDA)
+merged_dfs_filtered <- split(PAIRS_GENOMIC, PAIRS_GENOMIC$NIDA)
 
 gc()
 
@@ -189,35 +189,36 @@ delta_metrics_df_final <- delta_metrics_df_final %>%
 
 write.csv(delta_metrics_df_final, "delta_features.csv", row.names = F)
 
+# free RAM
+rm(pairs_to_d0, pairs_to_dx, delta_metrics_df_final)
 gc()
 
 
 ####### NETWORK FEATURES #######------------------
 
 # Pre-set the key for faster subsetting (using the data.table index)
-setkey(PAIRS_GENOMIC_dt, PairsID)
+setkey(PAIRS_GENOMIC, PairsID)
 
 # Function to process each pair
-process_pair <- function(pair_id, PAIRS_GENOMIC_dt) {
+process_pair <- function(pair_id, PAIRS_GENOMIC) {
   # Subset the data efficiently by PairsID (using data.table indexing)
-  merged_dfs_filtered_count_sub <- PAIRS_GENOMIC_dt[.(pair_id)]
+  merged_dfs_filtered_count_sub <- PAIRS_GENOMIC[.(pair_id)]
   
   # Use table function to create the co-occurrence matrix
   w <- table(merged_dfs_filtered_count_sub$allele, merged_dfs_filtered_count_sub$time_point)
   
-  # Return the result
   return(w)
 }
 
 # Function to process a chunk of pairs
-process_chunk <- function(pairs_chunk, PAIRS_GENOMIC_dt) {
-  result_chunk <- lapply(pairs_chunk, process_pair, PAIRS_GENOMIC_dt)
+process_chunk <- function(pairs_chunk, PAIRS_GENOMIC) {
+  result_chunk <- lapply(pairs_chunk, process_pair, PAIRS_GENOMIC)
   names(result_chunk) <- pairs_chunk  # Assign names within the chunk
   return(result_chunk)
 }
 
 chunk_size <- 2000  # Define the chunk size
-pair_chunks <- split(unique(PAIRS_GENOMIC_dt$PairsID), ceiling(seq_along(unique(PAIRS_GENOMIC_dt$PairsID)) / chunk_size))
+pair_chunks <- split(unique(PAIRS_GENOMIC$PairsID), ceiling(seq_along(unique(PAIRS_GENOMIC$PairsID)) / chunk_size))
 num_cores <- detectCores() - 0  # Use all but one core
 
 # Process each chunk in parallel
@@ -227,7 +228,7 @@ for (chunk in pair_chunks) {
   # Parallel processing of the current chunk
   print(paste0("Processing pairs ",  min(chunk), " to ", max(chunk)))
   
-  chunk_result <- mclapply(chunk, process_pair, PAIRS_GENOMIC_dt, mc.cores = num_cores)
+  chunk_result <- mclapply(chunk, process_pair, PAIRS_GENOMIC, mc.cores = num_cores)
   
   # Convert the result into a named list and combine with the main result
   names(chunk_result) <- chunk
@@ -249,16 +250,16 @@ network_metrics <- function(graph) {
   list(
     density = edge_density(graph),
     clustering_coefficient = transitivity(graph, type = "average"),
-    eigenvector_centrality = mean(eigen_centrality(graph)$vector),
+    # eigenvector_centrality = mean(eigen_centrality(graph)$vector),
     avg_path_length = mean_distance(graph, directed = FALSE),  # Faster version
-    #assortativity = assortativity_degree(graph),
+    # assortativity = assortativity_degree(graph),
     betweenness_centrality = mean(betweenness(graph, normalized = TRUE)),
-    #degree_centrality = mean(degree(graph)),
+    # degree_centrality = mean(degree(graph)),
     modularity_value = modularity(cluster_fast_greedy(graph)),
     #avg_node_strength = mean(strength(graph)),
     edge_betweenness = mean(edge_betweenness(graph)),
-    #motifs_triangles = count_motifs(graph, size = 3),  # Counting triangles
-    global_efficiency = 1 / mean_distance(graph, directed = FALSE),
+    # motifs_triangles = count_motifs(graph, size = 3),  # Counting triangles
+    # global_efficiency = 1 / mean_distance(graph, directed = FALSE),
     constraint = mean(constraint(graph))
   )
 }
@@ -290,7 +291,7 @@ process_pair_id <- function(pair_id) {
 
 # Parallel processing setup
 num_cores <- detectCores() - 0
-chunk_size <- 2000  # Adjust based on available memory
+chunk_size <- 1000  # Adjust based on available memory
 
 # Initialize the progress bar
 pb <- progress_bar$new(
@@ -347,9 +348,9 @@ gc()
 
 
 
-####### DCIFER'S IBD #######------------------  AQUÍ VOY!!!!!!!!!!!!!!!!!!!!! 14/MARZO/2025
+####### DCIFER'S IBD #######------------------  
 
-dsmp <- formatDat(PAIRS_GENOMIC_dt, svar = "NIDA", lvar = "locus", avar = "allele")
+dsmp <- formatDat(PAIRS_GENOMIC, svar = "NIDA", lvar = "locus", avar = "allele")
 
 #use already calculated coi instead?
 lrank <- 2
@@ -370,14 +371,14 @@ dres0_long <- dres0_long %>% select(-Var3)
 colnames(dres0_long) <- c("infection1", "infection2", "IBD_estimate")
 
 # # add pairsID column
-# paired_samples_reshaped <- PAIRS_METADATA_dt %>%
+# paired_samples_reshaped <- PAIRS_METADATA %>%
 #   select(PairsID, NIDA, time_point) %>%
 #   pivot_wider(names_from = time_point, values_from = NIDA, values_fn = list) %>%
 #   unnest(c(D0, Dx))
 
 
 # First match: D0 with infection1 and Dx with infection2
-match1 <- PAIRS_METADATA_dt %>%
+match1 <- PAIRS_METADATA %>%
   left_join(dres0_long, by = c("NIDA1" = "infection1", "NIDA2" = "infection2")) %>%
   select(PairsID, NIDA1, NIDA2, IBD_estimate)
 
@@ -385,7 +386,7 @@ match1 <- match1[!is.na(match1$IBD_estimate),]
 
 
 # Second match: Dx with infection1 and D0 with infection2
-match2 <- PAIRS_METADATA_dt %>%
+match2 <- PAIRS_METADATA %>%
   left_join(dres0_long, by = c("NIDA2" = "infection1", "NIDA1" = "infection2")) %>%
   select(PairsID, NIDA1, NIDA2, IBD_estimate)
 
