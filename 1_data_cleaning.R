@@ -10,7 +10,7 @@ main_dir <- "." # directory where all the filtered runs data are located
 metadata_file <- "Final_list_TES_Envio_ISG_INPUT_TABLE.csv" # should have the nidas, the timepoints and the pairs to which samples belong to
 maf_filter <- 0.02
 min_allele_read_count <- 10 
-
+top_n_amps <- 50 # top most variable amps to use
 
 
 ####### 1) IMPORT DATA-------------------
@@ -27,13 +27,13 @@ list_of_dfs <- list()
 
 for (dir in filtered_dirs) {
   
-  print(paste0("Importing: ", dir))
-  
   folder_name <- gsub("_RESULTS.*", "", basename(dir))
   
   csv_file <- file.path(dir, "allele_data_global_max_0_filtered.csv")
   
   if (file.exists(csv_file)) {
+    
+    print(paste0("Importing: ", dir))
     
     df <- read.csv(csv_file)
     df$run <- folder_name
@@ -181,7 +181,7 @@ hist(variability_per_locus$mean_He)
 # top_var_amps <- variability_per_locus[variability_per_locus$mean_He > 0.1,]$locus 
 
 # keep top 50 most variable amps
-top_var_amps <- variability_per_locus[1:50,]$locus
+top_var_amps <- variability_per_locus[1:top_n_amps,]$locus
 
 # subset data based on amplicons
 merged_dfs_agg <- merged_dfs_agg[merged_dfs_agg$locus %in% top_var_amps,]
@@ -196,6 +196,6 @@ length(unique(merged_dfs_agg$locus)) # amplicons shared by all nidas
 
 ###### 6) OUTPUTS ---------
 
-write.csv(merged_dfs_agg, "genomic_updated.csv", row.names = F)
-write.csv(metadata_updated, "metadata_updated.csv", row.names = F)
+write.csv(merged_dfs_agg, paste0("genomic_updated_top_", top_n_amps, "_amps.csv"), row.names = F)
+write.csv(metadata_updated, paste0("metadata_updated_", top_n_amps, "_amps.csv"), row.names = F)
 
