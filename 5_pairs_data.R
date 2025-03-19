@@ -6,10 +6,9 @@ library(ggplot2)
 
 
 
-clones_genomic <- read.csv("clones_genomic_data.csv")
-metadata_updated <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+clones_genomic <- read.csv("clones_genomic_data_top_50_amps.csv")
+metadata_updated <- read.csv("metadata_updated_top_50_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
-strain_mixes_subsampled <- readRDS("mixes_list.RDS")
 
 
 
@@ -36,8 +35,8 @@ unique_combos <- unique_combos %>% arrange(post_effective_coi_med_D0, post_effec
 
 ## 3) CREATE PAIRS------------------------------
 
-MIXES_METADATA <- readRDS("MIXES_METADATA.RDS")
-MIXES_GENOMIC <- readRDS("MIXES_GENOMIC.RDS")
+MIXES_METADATA <- readRDS("MIXES_METADATA_top_50_amps_30_clones.RDS")
+MIXES_GENOMIC <- readRDS("MIXES_GENOMIC_top_50_amps_30_clones.RDS")
 
 nidas_all <- MIXES_METADATA$NIDA
 
@@ -75,7 +74,7 @@ length(unique(merged_dfs$PairsID))
 
 gc()
 
-saveRDS(merged_dfs, "PAIRS_GENOMIC.RDS")
+saveRDS(merged_dfs, "PAIRS_GENOMIC_top_50_amps_30_clones.RDS")
 
 
 ############################################
@@ -129,7 +128,7 @@ shared_alleles_distribution <- ggplot(alleles_shared_prop, aes(x = pair_type, y 
 
 shared_alleles_distribution
 
-ggsave("Prop_Alleles_Shared_by_Mix_Type.png", shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
+ggsave("Prop_Alleles_Shared_by_Mix_Type_top_50_amps_30_clones.png", shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
 
 
 
@@ -197,7 +196,7 @@ PAIRS_metadata <- inner_join(PAIRS_metadata, labels, by = "PairsID")
 PAIRS_metadata <- inner_join(PAIRS_metadata, alleles_shared_prop, by = "PairsID")
 
 
-saveRDS(PAIRS_metadata, "PAIRS_METADATA.RDS")
+saveRDS(PAIRS_metadata, "PAIRS_METADATA_top_50_amps_30_clones.RDS")
 
 
 
@@ -235,4 +234,4 @@ PAIRS_summary <- PAIRS_summary %>%
 
 PAIRS_summary
 
-write.csv(PAIRS_summary, "PAIRS_SUMMARY.csv", row.names = F)
+write.csv(PAIRS_summary, "PAIRS_SUMMARY_top_50_amps_30_clones.csv", row.names = F)
