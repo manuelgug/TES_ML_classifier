@@ -13,7 +13,7 @@ library(ggsignif)
 
 ###### 1) INPUT AND FORMAT ----------
 
-TRAINING_DATA <- read.csv("TRAINING_DATA.csv", row.names = 1) 
+TRAINING_DATA <- read.csv("TRAINING_DATA_top_50_amps_30_clones.csv", row.names = 1) 
 LABELS <- data.frame(labels = TRAINING_DATA$labels)
 #LABELS$labels <- ifelse(FEATS_LABELS_FINAL$labels == 'NI', 0, ifelse(FEATS_LABELS_FINAL$labels == 'R', 1, FEATS_LABELS_FINAL$labels))
 
@@ -63,7 +63,7 @@ distributions <- ggplot(TRAINING_DATA_EDA_long, aes(x = Value)) +
 
 distributions
 
-ggsave("training_data_EDA_distributions.png", distributions, bg = "white", height = 8, width = 8, dpi = 300)
+ggsave("training_data_EDA_distributions_top_50_amps_30_clones.png", distributions, bg = "white", height = 8, width = 8, dpi = 300)
 
 
 
@@ -97,7 +97,7 @@ bootstrap_convergence <- TRAINING_DATA_EDA %>%
 bootstrap_convergence_df <- bootstrap_convergence %>%
   unnest(bootstrap_medians_mean_by_size)
 
-saveRDS(bootstrap_convergence, "training_data_EDA_median_bootstrap_convergence.RDS")
+saveRDS(bootstrap_convergence, "training_data_EDA_median_bootstrap_convergence_top_50_amps_30_clones.RDS")
 
 
 # Create the plot
@@ -117,7 +117,7 @@ p <- ggplot(bootstrap_convergence_df, aes(x = sample_size, y = mean_value)) +
 p
 
 # Save the plot
-ggsave("training_data_EDA_median_bootstrap_convergence.png", plot = p, width = 12, height = 10, dpi = 300, bg = "white")
+ggsave("training_data_EDA_median_bootstrap_convergence_top_50_amps_30_clones.png", plot = p, width = 12, height = 10, dpi = 300, bg = "white")
 
 
 
@@ -178,7 +178,7 @@ for (feature in wilcox_results$Feature) {
 var_boxplots <- wrap_plots(plot_list, ncol = round(sqrt(length(wilcox_results$Feature)), 0)) 
 var_boxplots
 
-ggsave("training_data_EDA_boxplots.png", var_boxplots, width = 12, height = 12, bg = "white")
+ggsave("training_data_EDA_boxplots_top_50_amps_30_clones.png", var_boxplots, width = 12, height = 12, bg = "white")
 
 # remove non significant features
 non_significant_features <- wilcox_results[wilcox_results$P_Value > 0.05,]$Feature
@@ -227,7 +227,7 @@ p <- ggplot(umap_combined, aes(x = x, y = y, color = labels, shape = labels)) +
   facet_wrap(~ panel, scales = "free", ncol=2)
 p
 
-ggsave("training_data_EDA_umap.png", p, width = 10, height = 8, bg = "white")
+ggsave("training_data_EDA_umap_top_50_amps_30_clones.png", p, width = 10, height = 8, bg = "white")
 
 
 
@@ -257,7 +257,7 @@ for (var in variables) {
 
 final_plot <- wrap_plots(plot_list, ncol = round(sqrt(length(variables)), 0))
 
-ggsave("training_data_EDA_umap_feats.png", final_plot, width = 18, height = 12, bg = "white")
+ggsave("training_data_EDA_umap_feats_top_50_amps_30_clones.png", final_plot, width = 18, height = 12, bg = "white")
 
 
 
@@ -323,7 +323,7 @@ for (k in K_RANGE){
   
   # output plots
   panels <- gridExtra::arrangeGrob(umap_cluster, cluster_description, ncol = 2)
-  ggsave(paste0("training_data_EDA_KMEANS_CLEAN_k_", k,".png"), panels, width = 15, height = 7.5, bg = "white")  
+  ggsave(paste0("training_data_EDA_KMEANS_CLEAN_k_", k,"_top_50_amps_30_clones.png"), panels, width = 15, height = 7.5, bg = "white")  
   
 }
   
@@ -344,4 +344,5 @@ TRAINING_DATA$PairsID <- c(1:nrow(TRAINING_DATA))
 
 TRAINING_DATA <- TRAINING_DATA %>% select(PairsID, everything())
 
-write.csv(TRAINING_DATA, "TRAINING_DATA_CLEAN.csv", row.names = F)
+write.csv(TRAINING_DATA, "TRAINING_DATA_CLEAN_top_50_amps_30_clones.csv", row.names = F)
+
