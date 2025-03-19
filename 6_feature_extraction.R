@@ -12,15 +12,15 @@ library(tidyr)
 library(purrr)
 
 
-#select data type betweem "training_data" or "real_data"
-DATA_TYPE = "REAL_DATA"
+#select data type betweem "TRAINING_DATA" or "REAL_DATA"
+DATA_TYPE = "TRAINING_DATA"
 
 
 if (DATA_TYPE == "TRAINING_DATA") {
   
   # for the training data:
-  PAIRS_METADATA <- readRDS("PAIRS_METADATA.RDS")
-  PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC.RDS")
+  PAIRS_METADATA <- readRDS("PAIRS_METADATA_top_50_amps_30_clones.RDS")
+  PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC_top_50_amps_30_clones.RDS")
   
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
@@ -28,8 +28,8 @@ if (DATA_TYPE == "TRAINING_DATA") {
 } else if (DATA_TYPE == "REAL_DATA") {
   
   #the actual data
-  PAIRS_GENOMIC <- read.csv("genomic_updated.csv")
-  PAIRS_METADATA <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+  PAIRS_GENOMIC <- read.csv("genomic_updated_top_50_amps.csv")
+  PAIRS_METADATA <- read.csv("metadata_updated_top_50_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
@@ -50,8 +50,6 @@ if (DATA_TYPE == "TRAINING_DATA") {
   print("Incorrect data type. Options are 'TRAINING_DATA' and 'REAL_DATA'.")
   
 }
-
-
 
 
 
@@ -166,7 +164,7 @@ pb <- progress_bar$new(
 )
 
 # Temporary file for writing output
-output_file <- paste0("delta_features_", DATA_TYPE, ".csv")
+output_file <- paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv")
 
 # Function to process each pair
 process_pair <- function(pair_id) {
@@ -217,12 +215,12 @@ for (i in seq(1, length(unique_pairs), by = chunk_size)) {
   pb$tick()
 }
 
-delta_metrics_df_final <- read.csv(paste0("delta_features_", DATA_TYPE, ".csv"))
+delta_metrics_df_final <- read.csv(paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
 
 delta_metrics_df_final <- delta_metrics_df_final %>%
   select(PairsID, everything())
 
-write.csv(delta_metrics_df_final, paste0("delta_features_", DATA_TYPE, ".csv"), row.names = F)
+write.csv(delta_metrics_df_final, paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"), row.names = F)
 
 # free RAM
 rm(pairs_to_d0, pairs_to_dx, delta_metrics_df_final)
@@ -275,7 +273,7 @@ cat("Calculated co-occurrence matrices for", length(dcasted_list), "pairs")
 
 
 #checkpoint
-saveRDS(dcasted_list, paste0("coocurrence_matrices_", DATA_TYPE, ".RDS"))
+saveRDS(dcasted_list, paste0("coocurrence_matrices_", DATA_TYPE, "_top_50_amps_30_clones.RDS"))
 # dcasted_list <- readRDS(paste0(outprefix, "_coocurrence_matrices.RDS"))
 
 pair_ids <- names(dcasted_list)
@@ -347,7 +345,7 @@ write_chunk_to_csv <- function(data, file_path, append = FALSE) {
 gc()
 
 # Temporary file for writing
-output_file <- paste0("network_features_", DATA_TYPE, ".csv")
+output_file <- paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv")
 
 # Process pair_ids in chunks
 for (i in seq(1, length(pair_ids), by = chunk_size)) {
@@ -372,12 +370,12 @@ for (i in seq(1, length(pair_ids), by = chunk_size)) {
   pb$tick()
 }
 
-network_metrics_df_final <- read.csv(paste0("network_features_", DATA_TYPE, ".csv"))
+network_metrics_df_final <- read.csv(paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
 
 network_metrics_df_final <- network_metrics_df_final %>%
   select(PairsID, everything())
 
-write.csv(network_metrics_df_final, paste0("network_features_", DATA_TYPE, ".csv"), row.names = F)
+write.csv(network_metrics_df_final, paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"), row.names = F)
 
 gc()
 
@@ -442,15 +440,15 @@ dres0_long_final_summarized <- dres0_long_final %>%
 
 dres0_long_final_summarized[complete.cases(dres0_long_final_summarized),]
 
-write.csv(dres0_long_final_summarized, paste0("IBD_features_", DATA_TYPE, ".csv"), row.names = F)
+write.csv(dres0_long_final_summarized, paste0("IBD_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"), row.names = F)
 
 
 
 ###### MERGE FEATURES ###### ----------------
 
-network_features <- read.csv(paste0("network_features_", DATA_TYPE, ".csv"))
-delta_features <- read.csv(paste0("delta_features_", DATA_TYPE, ".csv"))
-ibd_features <- read.csv(paste0("IBD_features_", DATA_TYPE, ".csv"))
+network_features <- read.csv(paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
+delta_features <- read.csv(paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
+ibd_features <- read.csv(paste0("IBD_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
 
 # List of data frames to be merged
 all_Feats <- list(delta_features, network_features, ibd_features)
@@ -469,4 +467,5 @@ if(DATA_TYPE == "TRAINING_DATA"){
 }
 
 ## OUTPUT
-write.csv(all_Feats_merged_df, paste0(DATA_TYPE,".csv"), row.names = F)
+write.csv(all_Feats_merged_df, paste0(DATA_TYPE,"_top_50_amps_30_clones.csv"), row.names = F)
+
