@@ -5,8 +5,8 @@ library(ggplot2)
 
 
 
-coi_stats <- read.csv("coi_stats.csv")
-data <- read.csv("genomic_updated.csv")
+coi_stats <- read.csv("coi_stats_top_50_amps.csv")
+data <- read.csv("genomic_updated_top_50_amps.csv")
 
 
 
@@ -58,7 +58,7 @@ hist<- ggplot(comparison_long, aes(x = value)) +
 
 hist
 
-ggsave("hist_shared_alleles.png", hist, height = 5, width = 8, bg = "white", dpi = 300)
+ggsave("hist_shared_alleles_top_50_amps.png", hist, height = 5, width = 8, bg = "white", dpi = 300)
 
 
 
@@ -101,5 +101,5 @@ clones_genomic <- clones_genomic[!clones_genomic$sampleID %in% clones_to_remove,
 
 ###### 4) EXPORT CLONE DATA
 
-write.csv(clones_genomic, "clones_genomic_data.csv", row.names = F)
+write.csv(clones_genomic, "clones_genomic_data_top_50_amps.csv", row.names = F)
 
