@@ -197,5 +197,5 @@ length(unique(merged_dfs_agg$locus)) # amplicons shared by all nidas
 ###### 6) OUTPUTS ---------
 
 write.csv(merged_dfs_agg, paste0("genomic_updated_top_", top_n_amps, "_amps.csv"), row.names = F)
-write.csv(metadata_updated, paste0("metadata_updated_", top_n_amps, "_amps.csv"), row.names = F)
+write.csv(metadata_updated, paste0("metadata_updated_top_", top_n_amps, "_amps.csv"), row.names = F)
 
