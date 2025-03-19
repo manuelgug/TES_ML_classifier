@@ -5,8 +5,24 @@ library(tidyr)
 library(ggplot2)
 
 
-clones_genomic <- read.csv("clones_genomic_data.csv")
-metadata_updated <- read.csv("metadata_updated.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+
+clones_genomic <- read.csv("clones_genomic_data_top_50_amps.csv")
+metadata_updated <- read.csv("metadata_updated_top_50_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+
+
+
+###### 0) SUBSAMPLE CLONES FOR TRAINING DATA
+
+N_CLONES <- 30
+
+length(unique(clones_genomic$sampleID))
+
+all_clones <- unique(clones_genomic$sampleID)
+
+set.seed(69420)
+subsampled_clones <- sample(all_clones, N_CLONES)
+
+clones_genomic <- clones_genomic[clones_genomic$sampleID %in% subsampled_clones, ]
 
 
 
@@ -54,7 +70,7 @@ strain_mixes <- strain_mixes[sort(names(strain_mixes))]
 ####### 3) SUBSAMPLE THE MIXES -------
 
 # Define the initial sample size from the first data frame
-initial_sample_size <- nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
+initial_sample_size <- 100 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
 sample_size <- initial_sample_size
 
 sample_size
@@ -73,6 +89,7 @@ for (i in 1:n_strains) {
 
     sample_size <- initial_sample_size  # initial_sample_size would give a more balanced training data. however, could add " * (n_strains - i + n_strains)" to get more mixes of lower strain content or maybe other approach if needed
 
+    set.seed(69420)
     strain_mixes_subsampled[[mix_name]] <- strain_mixes[[mix_name]] %>% 
       sample_n(min(nrow(strain_mixes[[mix_name]]), sample_size))
   }
@@ -163,8 +180,8 @@ nrow(MIXES_METADATA) == length(unique(MIXES_GENOMIC$mixID))
 all(MIXES_METADATA$NIDA %in% unique(MIXES_GENOMIC$mixID))
 
 
-saveRDS(MIXES_METADATA, "MIXES_METADATA.RDS")
-saveRDS(MIXES_GENOMIC, "MIXES_GENOMIC.RDS")
+saveRDS(MIXES_METADATA, paste0("MIXES_METADATA_top_50_amps_", N_CLONES, "_clones.RDS"))
+saveRDS(MIXES_GENOMIC, paste0("MIXES_GENOMIC_top_50_amps_", N_CLONES, "_clones.RDS"))
 
 
 
@@ -191,5 +208,5 @@ allele_counts_per_mix <- ggplot(alleles_per_mix, aes(x = alleles_per_mix, fill =
 
 allele_counts_per_mix
 
-ggsave("mixes_EDA.png", allele_counts_per_mix, width = 9, height = 6, dpi = 300, bg = "white")
+ggsave(paste0("mixes_EDA_top_50_amps_", N_CLONES, "_clones.png"), allele_counts_per_mix, width = 9, height = 6, dpi = 300, bg = "white")
 
