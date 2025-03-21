@@ -19,8 +19,8 @@ DATA_TYPE = "TRAINING_DATA"
 if (DATA_TYPE == "TRAINING_DATA") {
   
   # for the training data:
-  PAIRS_METADATA <- readRDS("PAIRS_METADATA_top_50_amps_30_clones.RDS")
-  PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC_top_50_amps_30_clones.RDS")
+  PAIRS_METADATA <- readRDS("PAIRS_METADATA_top_30_amps_30_clones.RDS")
+  PAIRS_GENOMIC <- readRDS("PAIRS_GENOMIC_top_30_amps_30_clones.RDS")
   
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
@@ -28,13 +28,13 @@ if (DATA_TYPE == "TRAINING_DATA") {
 } else if (DATA_TYPE == "REAL_DATA") {
   
   #the actual data
-  PAIRS_GENOMIC <- read.csv("genomic_updated_top_50_amps.csv")
-  PAIRS_METADATA <- read.csv("metadata_updated_top_50_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+  PAIRS_GENOMIC <- read.csv("genomic_updated_top_30_amps.csv")
+  PAIRS_METADATA <- read.csv("metadata_updated_top_30_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
-  
-  
+
+  PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(read_counts = reads)  
   PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(NIDA = sampleID) # format genomic file
   PAIRS_GENOMIC <- PAIRS_GENOMIC %>%
     separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE)
@@ -44,6 +44,8 @@ if (DATA_TYPE == "TRAINING_DATA") {
   PAIRS_METADATA <- PAIRS_METADATA %>%
     pivot_wider(names_from = time_point, values_from = NIDA, names_prefix = "NIDA") %>%
     rename(NIDA1 = NIDAD0, NIDA2 = NIDADx)
+  
+  
   
 } else {
   
@@ -99,6 +101,9 @@ calculate_features_optimized <- function(sample1, sample2) {
   # Bray-Curtis dissimilarity
   # bray_curtis <- 1 - (2 * sum(pmin(f1_norm, f2_norm), na.rm = TRUE) / (sum(f1_norm, na.rm = TRUE) + sum(f2_norm, na.rm = TRUE)))
   
+  # Bhattacharyya distance
+  # bhattacharyya <- -log(sum(sqrt(f1_norm * f2_norm)))
+  
   # ---- Allele Dynamics Features ---- #
   
   # Number of alleles per sample
@@ -134,6 +139,7 @@ calculate_features_optimized <- function(sample1, sample2) {
     allele_retention_rate = retention_rate,
     allele_gain = allele_gain
     #allele_loss = allele_loss,
+    #bhattacharyya_distance = bhattacharyya,
     #shannon_diversity_change = shannon_diversity_change,
     #heterozygosity_change = heterozygosity_change
   ))
@@ -149,6 +155,9 @@ pairs_to_dx <- PAIRS_METADATA$NIDA2[match(unique_pairs, PAIRS_METADATA$PairsID)]
 
 # Preprocess merged_dfs_filtered into a list for fast access
 merged_dfs_filtered <- split(PAIRS_GENOMIC, PAIRS_GENOMIC$NIDA)
+merged_dfs_filtered <- lapply(merged_dfs_filtered, function(df) { # reduces df size significantly
+  df %>% select(-PairsID, -time_point) %>% distinct()
+})
 
 gc()
 
@@ -164,11 +173,11 @@ pb <- progress_bar$new(
 )
 
 # Temporary file for writing output
-output_file <- paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv")
+output_file <- paste0("delta_features_", DATA_TYPE, "_top_30_amps_30_clones.csv")
 
 # Function to process each pair
 process_pair <- function(pair_id) {
-  sample1 <- merged_dfs_filtered[[pairs_to_d0[pair_id]]]
+  sample1 <- merged_dfs_filtered[[pairs_to_d0[pair_id]]] 
   sample2 <- merged_dfs_filtered[[pairs_to_dx[pair_id]]]
   
   # Calculate features
@@ -215,12 +224,12 @@ for (i in seq(1, length(unique_pairs), by = chunk_size)) {
   pb$tick()
 }
 
-delta_metrics_df_final <- read.csv(paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
+delta_metrics_df_final <- read.csv(paste0("delta_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"))
 
 delta_metrics_df_final <- delta_metrics_df_final %>%
   select(PairsID, everything())
 
-write.csv(delta_metrics_df_final, paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"), row.names = F)
+write.csv(delta_metrics_df_final, paste0("delta_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"), row.names = F)
 
 # free RAM
 rm(pairs_to_d0, pairs_to_dx, delta_metrics_df_final)
@@ -252,7 +261,7 @@ process_chunk <- function(pairs_chunk, PAIRS_GENOMIC) {
 
 chunk_size <- 2000  # Define the chunk size
 pair_chunks <- split(unique(PAIRS_GENOMIC$PairsID), ceiling(seq_along(unique(PAIRS_GENOMIC$PairsID)) / chunk_size))
-num_cores <- detectCores() - 0  # Use all but one core
+num_cores <- detectCores() - 0
 
 # Process each chunk in parallel
 dcasted_list <- list()
@@ -273,7 +282,7 @@ cat("Calculated co-occurrence matrices for", length(dcasted_list), "pairs")
 
 
 #checkpoint
-saveRDS(dcasted_list, paste0("coocurrence_matrices_", DATA_TYPE, "_top_50_amps_30_clones.RDS"))
+saveRDS(dcasted_list, paste0("coocurrence_matrices_", DATA_TYPE, "_top_30_amps_30_clones.RDS"))
 # dcasted_list <- readRDS(paste0(outprefix, "_coocurrence_matrices.RDS"))
 
 pair_ids <- names(dcasted_list)
@@ -345,7 +354,7 @@ write_chunk_to_csv <- function(data, file_path, append = FALSE) {
 gc()
 
 # Temporary file for writing
-output_file <- paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv")
+output_file <- paste0("network_features_", DATA_TYPE, "_top_30_amps_30_clones.csv")
 
 # Process pair_ids in chunks
 for (i in seq(1, length(pair_ids), by = chunk_size)) {
@@ -370,12 +379,12 @@ for (i in seq(1, length(pair_ids), by = chunk_size)) {
   pb$tick()
 }
 
-network_metrics_df_final <- read.csv(paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
+network_metrics_df_final <- read.csv(paste0("network_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"))
 
 network_metrics_df_final <- network_metrics_df_final %>%
   select(PairsID, everything())
 
-write.csv(network_metrics_df_final, paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"), row.names = F)
+write.csv(network_metrics_df_final, paste0("network_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"), row.names = F)
 
 gc()
 
@@ -440,15 +449,15 @@ dres0_long_final_summarized <- dres0_long_final %>%
 
 dres0_long_final_summarized[complete.cases(dres0_long_final_summarized),]
 
-write.csv(dres0_long_final_summarized, paste0("IBD_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"), row.names = F)
+write.csv(dres0_long_final_summarized, paste0("IBD_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"), row.names = F)
 
 
 
 ###### MERGE FEATURES ###### ----------------
 
-network_features <- read.csv(paste0("network_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
-delta_features <- read.csv(paste0("delta_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
-ibd_features <- read.csv(paste0("IBD_features_", DATA_TYPE, "_top_50_amps_30_clones.csv"))
+network_features <- read.csv(paste0("network_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"))
+delta_features <- read.csv(paste0("delta_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"))
+ibd_features <- read.csv(paste0("IBD_features_", DATA_TYPE, "_top_30_amps_30_clones.csv"))
 
 # List of data frames to be merged
 all_Feats <- list(delta_features, network_features, ibd_features)
@@ -467,5 +476,5 @@ if(DATA_TYPE == "TRAINING_DATA"){
 }
 
 ## OUTPUT
-write.csv(all_Feats_merged_df, paste0(DATA_TYPE,"_top_50_amps_30_clones.csv"), row.names = F)
+write.csv(all_Feats_merged_df, paste0(DATA_TYPE,"_top_30_amps_30_clones.csv"), row.names = F)
 
