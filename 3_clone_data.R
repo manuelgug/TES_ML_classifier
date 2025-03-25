@@ -4,9 +4,12 @@ library(reshape2)
 library(ggplot2)
 
 
+site <- "Inhambane"
+top_n_amps <- 50 
 
-coi_stats <- read.csv("coi_stats_top_50_amps.csv")
-data <- read.csv("genomic_updated_top_50_amps.csv")
+
+coi_stats <- read.csv(paste0("coi_stats_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+data <- read.csv(paste0("genomic_updated_",site,"_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
 
 
 
@@ -16,6 +19,7 @@ clones <- coi_stats[coi_stats$post_effective_coi_med < 1.1,]$NIDA #ecoi < 1.1
 #clones <- coi_stats[coi_stats$naive_coi == 1,]$NIDA #naive coi = 1
 
 clones_genomic <- data[data$sampleID %in% clones,]
+
 
 
 ###### 2) CALCULATE PAIRWISE PROPORTION OF SHARED ALLELES -----
@@ -42,7 +46,16 @@ for (i in 1:n) {
   }
 }
 
-comparison_long <- melt(comparison_matrix)
+# Convert the matrix to a dataframe before melting
+comparison_df <- as.data.frame(comparison_matrix)
+
+# Ensure row names are preserved as a column
+comparison_df$RowName <- rownames(comparison_matrix)
+
+# Melt while keeping row and column names
+comparison_long <- reshape2::melt(comparison_df, id.vars = "RowName", variable.name = "ColumnName", value.name = "value")
+colnames(comparison_long) <- c("Var1", "Var2", "value")
+
 comparison_long <- comparison_long %>%
   arrange(value)
 
@@ -58,7 +71,7 @@ hist<- ggplot(comparison_long, aes(x = value)) +
 
 hist
 
-ggsave("hist_shared_alleles_top_50_amps.png", hist, height = 5, width = 8, bg = "white", dpi = 300)
+ggsave(paste0("hist_shared_alleles_",site,"_top_",top_n_amps, "_amps.png"), hist, height = 5, width = 8, bg = "white", dpi = 300)
 
 
 
@@ -88,8 +101,8 @@ for (i in seq_len(nrow(same_clones))) {
   }
 }
 
-# Remove the first element from each group, this is not gonna be removed from the data (it's the representative sample from each group of identical clones)
-groups <- lapply(groups, function(x) x[-1])
+# Remove the last element from each group, this is not gonna be removed from the data (it's the representative sample from each group of identical clones)
+groups <- lapply(groups, function(x) x[1])
 
 # these are the redundant clones to remove from the clone data
 clones_to_remove <- unlist(groups)
@@ -97,9 +110,10 @@ clones_to_remove <- unlist(groups)
 #remove redundant clones
 clones_genomic <- clones_genomic[!clones_genomic$sampleID %in% clones_to_remove,]
 
+length(unique(clones_genomic$sampleID))
 
 
 ###### 4) EXPORT CLONE DATA
 
-write.csv(clones_genomic, "clones_genomic_data_top_50_amps.csv", row.names = F)
+write.csv(clones_genomic, paste0("clones_genomic_data_",site,"_top_",top_n_amps,"_amps.csv"), row.names = F)
 
