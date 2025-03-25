@@ -5,15 +5,18 @@ library(tidyr)
 library(ggplot2)
 
 
+site <- "Inhambane"
+top_n_amps <- 50 
 
-clones_genomic <- read.csv("clones_genomic_data_top_50_amps.csv")
-metadata_updated <- read.csv("metadata_updated_top_50_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+
+clones_genomic <- read.csv(paste0("clones_genomic_data_",site,"_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+metadata_updated <- read.csv(paste0("metadata_updated_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
 
 
 ###### 0) SUBSAMPLE CLONES FOR TRAINING DATA
 
-N_CLONES <- 30
+N_CLONES <- length(unique(clones_genomic$sampleID)) #change if needed
 
 length(unique(clones_genomic$sampleID))
 
@@ -70,7 +73,7 @@ strain_mixes <- strain_mixes[sort(names(strain_mixes))]
 ####### 3) SUBSAMPLE THE MIXES -------
 
 # Define the initial sample size from the first data frame
-initial_sample_size <- 100 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
+initial_sample_size <- 120 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
 sample_size <- initial_sample_size
 
 sample_size
@@ -180,8 +183,8 @@ nrow(MIXES_METADATA) == length(unique(MIXES_GENOMIC$mixID))
 all(MIXES_METADATA$NIDA %in% unique(MIXES_GENOMIC$mixID))
 
 
-saveRDS(MIXES_METADATA, paste0("MIXES_METADATA_top_50_amps_", N_CLONES, "_clones.RDS"))
-saveRDS(MIXES_GENOMIC, paste0("MIXES_GENOMIC_top_50_amps_", N_CLONES, "_clones.RDS"))
+saveRDS(MIXES_METADATA, paste0("MIXES_METADATA_",site,"_top_", top_n_amps,"amps_", N_CLONES, "_clones.RDS"))
+saveRDS(MIXES_GENOMIC, paste0("MIXES_GENOMIC_" ,site,"_top_", top_n_amps, "amps_", N_CLONES, "_clones.RDS"))
 
 
 
@@ -208,5 +211,5 @@ allele_counts_per_mix <- ggplot(alleles_per_mix, aes(x = alleles_per_mix, fill =
 
 allele_counts_per_mix
 
-ggsave(paste0("mixes_EDA_top_50_amps_", N_CLONES, "_clones.png"), allele_counts_per_mix, width = 9, height = 6, dpi = 300, bg = "white")
+ggsave(paste0("mixes_EDA_",site,"_top_",top_n_amps,"_amps_", N_CLONES, "_clones.png"), allele_counts_per_mix, width = 9, height = 6, dpi = 300, bg = "white")
 
