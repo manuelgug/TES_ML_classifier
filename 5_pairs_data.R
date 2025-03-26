@@ -5,9 +5,12 @@ library(tidyr)
 library(ggplot2)
 
 
+site <- "Inhambane"
+top_n_amps <- 50 
 
-clones_genomic <- read.csv("clones_genomic_data_top_50_amps.csv")
-metadata_updated <- read.csv("metadata_updated_top_50_amps.csv", stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+
+clones_genomic <- read.csv(paste0("clones_genomic_data_",site,"_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+metadata_updated <- read.csv(paste0("metadata_updated_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
 
 
@@ -35,8 +38,8 @@ unique_combos <- unique_combos %>% arrange(post_effective_coi_med_D0, post_effec
 
 ## 3) CREATE PAIRS------------------------------
 
-MIXES_METADATA <- readRDS("MIXES_METADATA_top_50_amps_30_clones.RDS")
-MIXES_GENOMIC <- readRDS("MIXES_GENOMIC_top_50_amps_30_clones.RDS")
+MIXES_METADATA <- readRDS(paste0("MIXES_METADATA_",site,"_top_", top_n_amps,"amps_", N_CLONES, "_clones.RDS"))
+MIXES_GENOMIC <- readRDS(paste0("MIXES_GENOMIC_" ,site,"_top_", top_n_amps, "amps_", N_CLONES, "_clones.RDS"))
 
 nidas_all <- MIXES_METADATA$NIDA
 
@@ -74,7 +77,7 @@ length(unique(merged_dfs$PairsID))
 
 gc()
 
-saveRDS(merged_dfs, "PAIRS_GENOMIC_top_50_amps_30_clones.RDS")
+saveRDS(merged_dfs, paste0("PAIRS_GENOMIC_",site,"_top_",top_n_amps,"_amps.RDS"))
 
 
 ############################################
@@ -128,7 +131,7 @@ shared_alleles_distribution <- ggplot(alleles_shared_prop, aes(x = pair_type, y 
 
 shared_alleles_distribution
 
-ggsave("Prop_Alleles_Shared_by_Mix_Type_top_50_amps_30_clones.png", shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
+ggsave(paste0("Prop_Alleles_Shared_by_Mix_Type_",site,"_top_",top_n_amps,"_amps.png"), shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
 
 
 
@@ -196,7 +199,7 @@ PAIRS_metadata <- inner_join(PAIRS_metadata, labels, by = "PairsID")
 PAIRS_metadata <- inner_join(PAIRS_metadata, alleles_shared_prop, by = "PairsID")
 
 
-saveRDS(PAIRS_metadata, "PAIRS_METADATA_top_50_amps_30_clones.RDS")
+saveRDS(PAIRS_metadata, paste0("PAIRS_METADATA_",site,"_top_",top_n_amps,"_amps.RDS"))
 
 
 
@@ -234,4 +237,5 @@ PAIRS_summary <- PAIRS_summary %>%
 
 PAIRS_summary
 
-write.csv(PAIRS_summary, "PAIRS_SUMMARY_top_50_amps_30_clones.csv", row.names = F)
+write.csv(PAIRS_summary, paste0("PAIRS_SUMMARY_",site,"_top_",top_n_amps,"_amps.csv"), row.names = F)
+
