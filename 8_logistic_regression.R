@@ -5,6 +5,7 @@ library(caret)
 library(dplyr)    
 library(tidyr)    
 library(ggplot2)  
+library(broom)
 
 
 
@@ -60,8 +61,36 @@ test_preds <- ifelse(test_probs >= 0.5, "R", "NI")
 # Evaluate the model using a confusion matrix
 cm <- confusionMatrix(as.factor(test_preds), TEST_labels, positive = "R")
 
-# Print Sensitivity and Specificity
 print(cm$byClass[c("Sensitivity", "Specificity")])
+
+
+# Extract model summary into a tidy format
+coef_df <- tidy(full_model)
+
+# Plot coefficients with confidence intervals
+ggplot(coef_df, aes(x = estimate, y = term)) +
+  geom_point(color = "blue", size = 3) +  # Plot coefficients
+  geom_errorbarh(aes(xmin = estimate - 1.96 * std.error, 
+                     xmax = estimate + 1.96 * std.error), 
+                 height = 0.2, color = "red") +  # Add confidence intervals
+  theme_minimal() +
+  labs(title = "Logistic Regression Coefficients",
+       x = "Estimate (Effect Size)",
+       y = "Feature")
+
+
+coef_df$odds_ratio <- exp(coef_df$estimate)  # Convert to odds ratios
+
+ggplot(coef_df, aes(x = odds_ratio, y = term)) +
+  geom_point(color = "blue", size = 3) + 
+  geom_errorbarh(aes(xmin = exp(estimate - 1.96 * std.error), 
+                     xmax = exp(estimate + 1.96 * std.error)), 
+                 height = 0.2, color = "red") + 
+  scale_x_log10() +  # Log scale for better visualization
+  theme_minimal() +
+  labs(title = "Odds Ratios from Logistic Regression",
+       x = "Odds Ratio",
+       y = "Feature")
 
 
 
@@ -149,5 +178,3 @@ predictions <- predict(fit_IBD, newdata = newdata, type = "response")
 preds <- ifelse(predictions >= 0.5, "R", "NI")
 
 print(as.data.frame(cbind(PairsID = rownames(REAL_DATA), prediction = preds, R_prob = predictions)))
-      
-
