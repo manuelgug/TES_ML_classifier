@@ -5,7 +5,7 @@ library(tidyr)
 library(ggplot2)
 
 
-site <- "Inhambane"
+site <- "Cabo_Delgado"
 top_n_amps <- 50 
 
 
@@ -136,7 +136,7 @@ ggsave(paste0("Prop_Alleles_Shared_by_Mix_Type_",site,"_top_",top_n_amps,"_amps.
 
 
 #############################################
-## LABEL DATA (THIS REPLACES THE 4_ADD_LABELS_METADATA.R script)
+## LABEL DATA 
 
 # Replace all "" with NA in the dataframe
 MIXES_METADATA <- MIXES_METADATA %>%
