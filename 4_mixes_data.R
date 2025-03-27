@@ -5,7 +5,7 @@ library(tidyr)
 library(ggplot2)
 
 
-site <- "Inhambane"
+site <- "Cabo_Delgado"
 top_n_amps <- 50 
 
 
@@ -73,7 +73,7 @@ strain_mixes <- strain_mixes[sort(names(strain_mixes))]
 ####### 3) SUBSAMPLE THE MIXES -------
 
 # Define the initial sample size from the first data frame
-initial_sample_size <- 120 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
+initial_sample_size <- 250 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
 sample_size <- initial_sample_size
 
 sample_size
