@@ -9,19 +9,18 @@ library(broom)
 
 
 
-site <- "Cabo_Delgado"
-top_n_amps <- 50 
+site <- "Zambezia"
 
 
 
 ### 1) IMPORT TRAINING AND REAL DATA ----------
 
-TRAINING_DATA <- read.csv(paste0(site, "_TRAINING_DATA_top_",top_n_amps,"_amps.csv"), row.names = 1) 
+TRAINING_DATA <- read.csv(paste0(site, "_TRAINING_DATA.csv"), row.names = 1) 
 TRAINING_DATA$eCOI_pairs <- paste0(TRAINING_DATA$D0_nstrains, "__", TRAINING_DATA$Dx_nstrains) # Create a new variable by combining 'D0nstrains' and 'Dxnstrains'
 LABELS <- data.frame(labels = TRAINING_DATA$labels)
 LABELS$labels <- as.factor(LABELS$labels)
 
-REAL_DATA <- read.csv(paste0(site, "_REAL_DATA_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
+REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
 
 
@@ -39,12 +38,18 @@ TRAIN <- TRAINING_DATA[train_indices, ]
 TRAIN_META <- TRAIN %>% select(-(1:which(names(TRAIN) == "IBD_estimate")))
 TRAIN <-TRAIN %>% select(1:which(names(TRAIN) == "IBD_estimate"))
 TRAIN_labels <- LABELS[train_indices, ]
+
+prop.table(table(TRAIN_META$eCOI_pairs))
+prop.table(table(TRAIN_labels))
 table(TRAIN_labels)
 
 TEST <- TRAINING_DATA[test_indices, ]
 TEST_META <- TEST %>% select(-(1:which(names(TEST) == "IBD_estimate")))
 TEST <-TEST %>% select(1:which(names(TEST) == "IBD_estimate"))
 TEST_labels <- LABELS[test_indices, ]
+
+prop.table(table(TEST_META$eCOI_pairs))
+prop.table(table(TEST_labels))
 table(TEST_labels)
 
 
@@ -121,7 +126,36 @@ best_decision_thresholds <- results %>%
   slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%  # Pick decision_threshold closest to 0.5
 ungroup() 
 
+
 print(best_decision_thresholds)
+
+
+# Reshape data to long format for easy plotting
+best_decision_thresholds_long <- best_decision_thresholds %>%
+  select(eCOI_pairs, sensitivity, specificity) %>%
+  pivot_longer(cols = c(sensitivity, specificity), 
+               names_to = "Metric", 
+               values_to = "Value")
+
+# Create bar plot
+metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
+  labs(title = "",
+       x = "eCOI Pairs",
+       y = "Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+  geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")
+
+metrics
+
+
+# save model and model results
+saveRDS(fit_IBD, paste0("LogReg_model_", site, ".RDS"))
+write.csv(best_decision_thresholds, paste0("training_Results_LogReg_", site, ".csv"), row.names = F)
+ggsave(paste0(site, "_model_results_LogReg.png"), metrics, bg = "white", dpi = 300, height = 5, width = 7)
+
 
 
 # Reshape data into long format for plotting
@@ -151,10 +185,92 @@ sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = log(Value
 sens_spec_plot
 
 
-##### 5) TEST MODEL ON REAL DATA USING IBD ONLY (BEST FEATURE) [[NEEDS COI FROM PAIRS TO APPLY DECIDION THRESHOLS!!]]--------
+
+###### 5) BENCHMAKR AGAINST A DUMMY RANDOM CLASSIFIER ----------------
+
+set.seed(420) 
+
+# Create a dummy classifier that randomly assigns labels based on class distribution
+class_probs <- prop.table(table(TRAIN_labels))
+TEST$dummy_random <- sample(names(class_probs), size = nrow(TEST), replace = TRUE, prob = class_probs)
+
+# Evaluate performance of both dummy classifiers per eCOI_pair
+dummy_results <- data.frame(eCOI_pairs = character(),
+                            model = character(),
+                            sensitivity = numeric(),
+                            specificity = numeric())
+
+for (strain_comb in unique(TEST_META$eCOI_pairs)) {
+  
+  subset_indices <- TEST_META$eCOI_pairs == strain_comb
+  subset_TEST_labels <- TEST_labels[subset_indices]
+  
+  preds <- TEST$dummy_random[subset_indices]
+  
+  cm <- confusionMatrix(as.factor(preds), as.factor(subset_TEST_labels), positive = "R")
+  
+  dummy_results <- rbind(dummy_results, data.frame(
+    eCOI_pairs = strain_comb,
+    model = dummy,
+    sensitivity = cm$byClass["Sensitivity"],
+    specificity = cm$byClass["Specificity"]
+  ))
+}
+
+# # Combine dummy and LR model results
+# best_decision_thresholds$model <- "LogReg"
+# comparison_results <- bind_rows(best_decision_thresholds[c("eCOI_pairs", "sensitivity", "specificity", "model")], dummy_results)
+# comparison_results <- comparison_results[comparison_results$eCOI_pairs %in% unique(TRAINING_DATA$eCOI_pairs),]
+# 
+# # Plot comparison
+# dummy_comparison <- ggplot(comparison_results, aes(x = eCOI_pairs, y = sensitivity, fill = model)) +
+#   geom_bar(stat = "identity", position = "dodge") +
+#   labs(title = "",
+#        x = "eCOI Pairs",
+#        y = "Sensitivity") +
+#   theme_minimal() +
+#   scale_fill_manual(values = c("LogReg" = "#008080", "dummy_random" = "#002080")) +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+#   geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")
+# 
+# dummy_comparison
+# 
+# ggsave(paste0(site, "_sensitivity_dummy_model_comparison.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
+
+# Reshape data to long format for easy plotting
+dummy_results_long <- dummy_results %>%
+  select(eCOI_pairs, sensitivity, specificity) %>%
+  pivot_longer(cols = c(sensitivity, specificity), 
+               names_to = "Metric", 
+               values_to = "Value")
+
+dummy_comparison <- ggplot(dummy_results_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
+  labs(title = "",
+       x = "eCOI Pairs",
+       y = "Value") +
+  theme_minimal() +
+  scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+  geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")+
+  ylim(0,1)
+
+dummy_comparison
+
+ggsave(paste0(site, "_sensitivity_dummy_model_comparison.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
+
+
+
+##### 6) TEST MODEL ON REAL DATA USING IBD ONLY (BEST FEATURE) --------
+
+# cover both directions 1__2 and 2__1
+best_decision_thresholds_rev <- best_decision_thresholds %>%
+  mutate(eCOI_pairs = sapply(strsplit(eCOI_pairs, "__"), function(x) paste0(rev(x), collapse = "__")))
+
+best_decision_thresholds <- unique(rbind(best_decision_thresholds, best_decision_thresholds_rev))
 
 #add threhold data
-REAL_DATA <- merge(REAL_DATA, best_decision_thresholds[c("eCOI_pairs", "decision_threshold")], by = c("eCOI_pairs"))
+REAL_DATA <- left_join(REAL_DATA, best_decision_thresholds[c("eCOI_pairs", "decision_threshold")], by = c("eCOI_pairs"))
 
 # Initialize a vector to store predictions
 REAL_DATA$prediction_prob <- NA
@@ -188,6 +304,8 @@ print(REAL_DATA)
 
 ## OUTPUT RESULTS 
 
-write.csv(REAL_DATA, paste0(site, "_REAL_DATA_top_",top_n_amps,"_amps_PREDICTIONS.csv"), row.names = F)
+write.csv(REAL_DATA, paste0(site, "_REAL_DATA_PREDICTIONS.csv"), row.names = F)
 
-ggsave(paste0(site, "_REAL_DATA_top_",top_n_amps,"_amps_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
+ggsave(paste0(site, "_REAL_DATA_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
+
+
