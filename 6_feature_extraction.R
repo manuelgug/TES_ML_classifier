@@ -9,8 +9,7 @@ library(purrr)
 library(stringr)
 
 
-site <- "Cabo_Delgado"
-top_n_amps <- 50 
+site <- "Tete"
 
 
 #select data type betweem "TRAINING_DATA" or "REAL_DATA"
@@ -20,8 +19,8 @@ DATA_TYPE = "TRAINING_DATA"
 if (DATA_TYPE == "TRAINING_DATA") {
   
   # for the training data:
-  PAIRS_METADATA <- readRDS(paste0("PAIRS_METADATA_",site,"_top_",top_n_amps,"_amps.RDS"))
-  PAIRS_GENOMIC <- readRDS(paste0("PAIRS_GENOMIC_",site,"_top_",top_n_amps,"_amps.RDS"))
+  PAIRS_METADATA <- readRDS(paste0("PAIRS_METADATA_",site,".RDS"))
+  PAIRS_GENOMIC <- readRDS(paste0("PAIRS_GENOMIC_",site,".RDS"))
   
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
@@ -29,8 +28,8 @@ if (DATA_TYPE == "TRAINING_DATA") {
 } else if (DATA_TYPE == "REAL_DATA") {
   
   #the actual data
-  PAIRS_GENOMIC <- read.csv(paste0("genomic_updated_",site,"_top_",top_n_amps,"_amps.csv"))
-  PAIRS_METADATA <- read.csv(paste0("metadata_updated_",site,"_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+  PAIRS_GENOMIC <- read.csv(paste0("genomic_updated_",site,".csv"))
+  PAIRS_METADATA <- read.csv(paste0("metadata_updated_",site,".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
@@ -119,7 +118,7 @@ dres0_long_final_summarized <- merge(dres0_long_final_summarized, PAIRS_METADATA
 
 if (DATA_TYPE == "REAL_DATA"){
   
-  metadata_updated <- read.csv(paste0("metadata_updated_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+  metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   
   metadata_updated$post_effective_coi_med <- round(metadata_updated$post_effective_coi_med)
   
@@ -138,4 +137,5 @@ if (DATA_TYPE == "REAL_DATA"){
 }
 
 
-write.csv(dres0_long_final_summarized, paste0(site,"_", DATA_TYPE,"_top_",top_n_amps,"_amps.csv"), row.names = F)
+write.csv(dres0_long_final_summarized, paste0(site,"_", DATA_TYPE,".csv"), row.names = F)
+
