@@ -5,12 +5,11 @@ library(tidyr)
 library(ggplot2)
 
 
-site <- "Inhambane"
-top_n_amps <- 50 
+site <- "Tete"
 
 
-clones_genomic <- read.csv(paste0("clones_genomic_data_",site,"_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
-metadata_updated <- read.csv(paste0("metadata_updated_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+clones_genomic <- read.csv(paste0("clones_genomic_data_",site,".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
 
 
@@ -35,11 +34,22 @@ unique_combos$post_effective_coi_med_Dx <- paste0("mix", unique_combos$post_effe
 
 unique_combos <- unique_combos %>% arrange(post_effective_coi_med_D0, post_effective_coi_med_Dx)
 
+#ignore directionality
+unique_combos <- unique_combos %>%
+  mutate(
+    combo_min = pmin(post_effective_coi_med_D0, post_effective_coi_med_Dx),
+    combo_max = pmax(post_effective_coi_med_D0, post_effective_coi_med_Dx)
+  ) %>%
+  distinct(combo_min, combo_max) %>%
+  rename(post_effective_coi_med_D0 = combo_min, post_effective_coi_med_Dx = combo_max)
+
+unique_combos
+
 
 ## 3) CREATE PAIRS------------------------------
 
-MIXES_METADATA <- readRDS(paste0("MIXES_METADATA_",site,"_top_", top_n_amps,"amps_", N_CLONES, "_clones.RDS"))
-MIXES_GENOMIC <- readRDS(paste0("MIXES_GENOMIC_" ,site,"_top_", top_n_amps, "amps_", N_CLONES, "_clones.RDS"))
+MIXES_METADATA <- readRDS(paste0("MIXES_METADATA_",site,".RDS"))
+MIXES_GENOMIC <- readRDS(paste0("MIXES_GENOMIC_" ,site,".RDS"))
 
 nidas_all <- MIXES_METADATA$NIDA
 
@@ -77,7 +87,7 @@ length(unique(merged_dfs$PairsID))
 
 gc()
 
-saveRDS(merged_dfs, paste0("PAIRS_GENOMIC_",site,"_top_",top_n_amps,"_amps.RDS"))
+saveRDS(merged_dfs, paste0("PAIRS_GENOMIC_",site,".RDS"))
 
 
 ############################################
@@ -131,12 +141,12 @@ shared_alleles_distribution <- ggplot(alleles_shared_prop, aes(x = pair_type, y 
 
 shared_alleles_distribution
 
-ggsave(paste0("Prop_Alleles_Shared_by_Mix_Type_",site,"_top_",top_n_amps,"_amps.png"), shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
+ggsave(paste0("Prop_Alleles_Shared_by_Mix_Type_",site,".png"), shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
 
 
 
 #############################################
-## LABEL DATA (THIS REPLACES THE 4_ADD_LABELS_METADATA.R script)
+## LABEL DATA 
 
 # Replace all "" with NA in the dataframe
 MIXES_METADATA <- MIXES_METADATA %>%
@@ -199,7 +209,7 @@ PAIRS_metadata <- inner_join(PAIRS_metadata, labels, by = "PairsID")
 PAIRS_metadata <- inner_join(PAIRS_metadata, alleles_shared_prop, by = "PairsID")
 
 
-saveRDS(PAIRS_metadata, paste0("PAIRS_METADATA_",site,"_top_",top_n_amps,"_amps.RDS"))
+saveRDS(PAIRS_metadata, paste0("PAIRS_METADATA_",site,".RDS"))
 
 
 
@@ -237,5 +247,5 @@ PAIRS_summary <- PAIRS_summary %>%
 
 PAIRS_summary
 
-write.csv(PAIRS_summary, paste0("PAIRS_SUMMARY_",site,"_top_",top_n_amps,"_amps.csv"), row.names = F)
+write.csv(PAIRS_summary, paste0("PAIRS_SUMMARY_",site,".csv"), row.names = F)
 

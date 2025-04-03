@@ -3,14 +3,13 @@ library(moire)
 library(dplyr)
 
 
-site <- "Inhambane"
-top_n_amps <- 50 
+site <- "Zambezia"
 
 
-data <- read.csv(paste0("genomic_updated_", site, "_top_", top_n_amps,"_amps.csv"))
+data <- read.csv(paste0("genomic_updated_", site, ".csv"))
 data <- data %>% rename(sample_id = sampleID)
 
-metadata_updated <- read.csv(paste0("metadata_updated_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
 
 # set MOIRE parameters
@@ -26,16 +25,16 @@ mcmc_results <- moire::run_mcmc(
   pt_chains = pt_chains, pt_num_threads = length(pt_chains),
   thin = 10)
 
-saveRDS(mcmc_results, paste0("coi_mcmc_", site, "_top_", top_n_amps,"_amps.RDS")) # save checkpoint ffs
+saveRDS(mcmc_results, paste0("coi_mcmc_", site,".RDS")) # save checkpoint ffs
 
 
 # extract ecoi and naive coi
-mcmc_results <- readRDS(paste0("coi_mcmc_", site, "_top_", top_n_amps,"_amps.RDS"))
+mcmc_results <- readRDS(paste0("coi_mcmc_", site,".RDS"))
 
 coi_stats <- merge(summarize_effective_coi(mcmc_results), summarize_coi(mcmc_results), by = "sample_id")
 coi_stats <- coi_stats %>% rename(NIDA = sample_id)
 
-write.csv(coi_stats, paste0("coi_stats_", site, "_top_", top_n_amps,"_amps.csv"), row.names = F)
+write.csv(coi_stats, paste0("coi_stats_", site, ".csv"), row.names = F)
 
 
 # update metadata
@@ -43,5 +42,5 @@ coi_stats$NIDA <- gsub("__.*", "", coi_stats$NIDA)
 metadata_updated <- merge(metadata_updated, coi_stats, by = c("NIDA"))
 metadata_updated <- metadata_updated %>% arrange(SampleID)
 
-write.csv(metadata_updated, paste0("metadata_updated_", site, "_top_", top_n_amps,"_amps.csv"), row.names = F)
+write.csv(metadata_updated, paste0("metadata_updated_", site, ".csv"), row.names = F)
 

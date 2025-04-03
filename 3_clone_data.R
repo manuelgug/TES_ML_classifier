@@ -4,12 +4,11 @@ library(reshape2)
 library(ggplot2)
 
 
-site <- "Inhambane"
-top_n_amps <- 50 
+site <- "Zambezia"
 
 
-coi_stats <- read.csv(paste0("coi_stats_", site, "_top_", top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
-data <- read.csv(paste0("genomic_updated_",site,"_top_",top_n_amps,"_amps.csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+coi_stats <- read.csv(paste0("coi_stats_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+data <- read.csv(paste0("genomic_updated_",site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
 
 
 
@@ -64,14 +63,14 @@ comparison_long <- comparison_long[as.character(comparison_long$Var1) < as.chara
 
 #plot a histogram
 hist<- ggplot(comparison_long, aes(x = value)) +
-  geom_histogram(fill = "skyblue", color = "black", bins = 100) +
+  geom_histogram(fill = "skyblue", color = "black", bins = 30) +
   labs(title = "", x = "Proportion of Shared Alleles", y = "Monoclonal Pairwise Comparisons") +
   theme_minimal()+
   xlim(0, 1)
 
 hist
 
-ggsave(paste0("hist_shared_alleles_",site,"_top_",top_n_amps, "_amps.png"), hist, height = 5, width = 8, bg = "white", dpi = 300)
+ggsave(paste0("hist_shared_alleles_",site,".png"), hist, height = 5, width = 8, bg = "white", dpi = 300)
 
 
 
@@ -115,5 +114,5 @@ length(unique(clones_genomic$sampleID))
 
 ###### 4) EXPORT CLONE DATA
 
-write.csv(clones_genomic, paste0("clones_genomic_data_",site,"_top_",top_n_amps,"_amps.csv"), row.names = F)
+write.csv(clones_genomic, paste0("clones_genomic_data_",site,".csv"), row.names = F)
 
