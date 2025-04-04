@@ -13,35 +13,34 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsA
 
 
 
-
 ##### 1) DETERMINE PAIRS OF MIXES BASED ON THE DATA'S COIs ------
 
-metadata_updated$post_effective_coi_med <- round(metadata_updated$post_effective_coi_med)
+metadata_updated$naive_coi <- round(metadata_updated$naive_coi)
 
 metadata_updated_wide <- metadata_updated %>%
   pivot_wider(
     id_cols = PairsID, 
     names_from = time_point, 
-    values_from = c(NIDA, post_effective_coi_med), 
+    values_from = c(NIDA, naive_coi), 
     names_glue = "{.value}_{time_point}"
   )
 
 unique_combos <- metadata_updated_wide %>%
-  distinct(post_effective_coi_med_D0, post_effective_coi_med_Dx)
+  distinct(naive_coi_D0, naive_coi_Dx)
 
-unique_combos$post_effective_coi_med_D0 <- paste0("mix", unique_combos$post_effective_coi_med_D0)
-unique_combos$post_effective_coi_med_Dx <- paste0("mix", unique_combos$post_effective_coi_med_Dx)
+unique_combos$naive_coi_D0 <- paste0("mix", unique_combos$naive_coi_D0)
+unique_combos$naive_coi_Dx <- paste0("mix", unique_combos$naive_coi_Dx)
 
-unique_combos <- unique_combos %>% arrange(post_effective_coi_med_D0, post_effective_coi_med_Dx)
+unique_combos <- unique_combos %>% arrange(naive_coi_D0, naive_coi_Dx)
 
 #ignore directionality
 unique_combos <- unique_combos %>%
   mutate(
-    combo_min = pmin(post_effective_coi_med_D0, post_effective_coi_med_Dx),
-    combo_max = pmax(post_effective_coi_med_D0, post_effective_coi_med_Dx)
+    combo_min = pmin(naive_coi_D0, naive_coi_Dx),
+    combo_max = pmax(naive_coi_D0, naive_coi_Dx)
   ) %>%
   distinct(combo_min, combo_max) %>%
-  rename(post_effective_coi_med_D0 = combo_min, post_effective_coi_med_Dx = combo_max)
+  rename(naive_coi_D0 = combo_min, naive_coi_Dx = combo_max)
 
 unique_combos
 
@@ -61,8 +60,8 @@ pairs_df <- expand.grid(NIDA1 = nidas_all, NIDA2 = nidas_all, stringsAsFactors =
 
 # subsample pairs based on unique_combos
 pairs_df <- pairs_df[rowSums(sapply(1:nrow(unique_combos), function(i) {
-  grepl(unique_combos$post_effective_coi_med_D0[i], pairs_df$NIDA1) & 
-    grepl(unique_combos$post_effective_coi_med_Dx[i], pairs_df$NIDA2)
+  grepl(unique_combos$naive_coi_D0[i], pairs_df$NIDA1) & 
+    grepl(unique_combos$naive_coi_Dx[i], pairs_df$NIDA2)
 })) > 0, ]
 
 
@@ -93,7 +92,7 @@ saveRDS(merged_dfs, paste0("PAIRS_GENOMIC_",site,".RDS"))
 ############################################
 ### COMPARE ALLELE CONTENT OF PAIRS
 
-# compare alleles shared between mixes:::   HASTA AQUÍ BIEN!!!!!!!!!! 13/MARZO/2025
+# compare alleles shared between mixes
 alleles <- merged_dfs %>%
   group_by(PairsID,NIDA, time_point) %>%
   summarize(alleles = list(allele))
@@ -106,10 +105,10 @@ gc()
 alleles_shared_prop <- alleles%>%
   group_by(PairsID) %>%
   summarize(
-    
+
     NIDA1 = NIDA[1],
     NIDA2 = NIDA[2],
-    
+
     # Calculate intersection and union for shared allele percentage
     shared_count = length(intersect(alleles[[1]], alleles[[2]])),
     union_count = length(union(alleles[[1]], alleles[[2]])),
@@ -126,22 +125,22 @@ alleles_shared_prop <- alleles_shared_prop %>%
     pair_type = paste0(NIDA1_trimmed, "_", NIDA2_trimmed)
   ) %>%
   select(-NIDA1_trimmed, -NIDA2_trimmed)
-
-
-shared_alleles_distribution <- ggplot(alleles_shared_prop, aes(x = pair_type, y = shared_prop)) +
-  geom_violin(fill = "lightblue", color = "black", alpha = 0.5) +  # Adds the distribution shape
-  geom_boxplot(width = 0.2, color = "black", outliers = F, outlier.color = "black", outlier.shape = 16) + 
-  labs(
-    title = "",
-    x = "Pair Type",
-    y = "Proportion of Alleles Shared between Mixes"
-  ) +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-shared_alleles_distribution
-
-ggsave(paste0("Prop_Alleles_Shared_by_Mix_Type_",site,".png"), shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
+# 
+# 
+# shared_alleles_distribution <- ggplot(alleles_shared_prop, aes(x = pair_type, y = shared_prop)) +
+#   geom_violin(fill = "lightblue", color = "black", alpha = 0.5) +  # Adds the distribution shape
+#   geom_boxplot(width = 0.2, color = "black", outliers = F, outlier.color = "black", outlier.shape = 16) + 
+#   labs(
+#     title = "",
+#     x = "Pair Type",
+#     y = "Proportion of Alleles Shared between Mixes"
+#   ) +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# 
+# shared_alleles_distribution
+# 
+# ggsave(paste0("Prop_Alleles_Shared_by_Mix_Type_",site,".png"), shared_alleles_distribution, height = 7, width = 10, bg = "white", dpi = 300)
 
 
 
@@ -208,6 +207,8 @@ PAIRS_metadata <- inner_join(PAIRS_metadata, labels, by = "PairsID")
 #add shared alleles for stratification
 PAIRS_metadata <- inner_join(PAIRS_metadata, alleles_shared_prop, by = "PairsID")
 
+# add pair_type column
+PAIRS_metadata$pair_type <- paste0(PAIRS_metadata$D0_nstrains, "__", PAIRS_metadata$Dx_nstrains)
 
 saveRDS(PAIRS_metadata, paste0("PAIRS_METADATA_",site,".RDS"))
 
