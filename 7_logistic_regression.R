@@ -1,6 +1,4 @@
 
-
-
 library(caret)    
 library(dplyr)    
 library(tidyr)    
@@ -8,8 +6,7 @@ library(ggplot2)
 library(broom)
 
 
-
-site <- "Zambezia"
+site <- "Tete"
 
 
 
@@ -26,27 +23,24 @@ REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, 
 
 ### 2) SPLIT DATA ------------
 
-# Assuming TRAINING_DATA and LABELS have the same number of rows and aligned order
-set.seed(420)
+# Step 1: Stratified Sampling by `pair_type`
+train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
+train_data <- TRAINING_DATA[train_indices, ]
+test_data <- TRAINING_DATA[-train_indices, ]
 
-n <- nrow(TRAINING_DATA)
-train_indices <- sample(1:n, size = floor(0.7 * n))
-test_indices <- setdiff(1:n, train_indices)
-
-# Split the data
-TRAIN <- TRAINING_DATA[train_indices, ]
-TRAIN_META <- TRAIN %>% select(-(1:which(names(TRAIN) == "IBD_estimate")))
-TRAIN <-TRAIN %>% select(1:which(names(TRAIN) == "IBD_estimate"))
+# Step 2: Extract Metadata and Labels
+TRAIN_META <- train_data %>% select(-IBD_estimate, -Jaccard)
+TRAIN <- train_data %>% select(IBD_estimate, Jaccard)
 TRAIN_labels <- LABELS[train_indices, ]
 
+TEST_META <- test_data %>% select(-IBD_estimate, -Jaccard)
+TEST <- test_data %>% select(IBD_estimate, Jaccard)
+TEST_labels <- LABELS[-train_indices, ]
+
+# Step 3: Verify Stratification
 prop.table(table(TRAIN_META$eCOI_pairs))
 prop.table(table(TRAIN_labels))
 table(TRAIN_labels)
-
-TEST <- TRAINING_DATA[test_indices, ]
-TEST_META <- TEST %>% select(-(1:which(names(TEST) == "IBD_estimate")))
-TEST <-TEST %>% select(1:which(names(TEST) == "IBD_estimate"))
-TEST_labels <- LABELS[test_indices, ]
 
 prop.table(table(TEST_META$eCOI_pairs))
 prop.table(table(TEST_labels))
@@ -57,11 +51,11 @@ table(TEST_labels)
 ##### 4) TEST MODEL USING IBD ONLY (BEST FEATURE)--------
 
 # Create training and test data frames for the current feature
-df_train_IBD <- data.frame(x = TRAIN[["IBD_estimate"]], label = as.factor(TRAIN_labels))
-df_test_IBD <- data.frame(x = TEST[["IBD_estimate"]], label = as.factor(TEST_labels))
+df_train_IBD <- data.frame(TRAIN[c("IBD_estimate", "Jaccard")], label = as.factor(TRAIN_labels))
+df_test_IBD <- data.frame(TEST[c("IBD_estimate", "Jaccard")], label = as.factor(TEST_labels))
 
 # Fit a simple logistic regression on the training set
-fit_IBD <- glm(label ~ x, data = df_train_IBD, family = binomial)
+fit_IBD <- glm(label ~ ., data = df_train_IBD, family = binomial)
 summary(fit_IBD)
 
 # Predict probabilities on the test (holdout) set
@@ -78,6 +72,8 @@ results <- data.frame(eCOI_pairs = character(),
                       R_pairs = numeric(),
                       NI_pairs = numeric(),
                       stringsAsFactors = FALSE)
+
+#decision_thresholds <- 0.5 # if wanting to use only 0.5 decision threshold for all pair types...
 
 # Loop through each decision_threshold
 for (thresh in decision_thresholds) {
@@ -211,7 +207,7 @@ for (strain_comb in unique(TEST_META$eCOI_pairs)) {
   
   dummy_results <- rbind(dummy_results, data.frame(
     eCOI_pairs = strain_comb,
-    model = dummy,
+    model = "dummy",
     sensitivity = cm$byClass["Sensitivity"],
     specificity = cm$byClass["Specificity"]
   ))
@@ -269,6 +265,8 @@ best_decision_thresholds_rev <- best_decision_thresholds %>%
 
 best_decision_thresholds <- unique(rbind(best_decision_thresholds, best_decision_thresholds_rev))
 
+#best_decision_thresholds$decision_threshold <- 0.5 # if wanting to use 0.5 for all real samples
+
 #add threhold data
 REAL_DATA <- left_join(REAL_DATA, best_decision_thresholds[c("eCOI_pairs", "decision_threshold")], by = c("eCOI_pairs"))
 
@@ -280,10 +278,11 @@ REAL_DATA$predictions <- NA
 for (i in 1:nrow(REAL_DATA)) {
   # Subset the current row's IBD_estimate and decision_threshold
   ibd_value <- REAL_DATA$IBD_estimate[i]
+  jaccard <- REAL_DATA$Jaccard[i]
   decision_threshold <- REAL_DATA$decision_threshold[i]
   
   # Create a new data frame for prediction (based on the current decision_threshold)
-  newdata <- data.frame(x = ibd_value)
+  newdata <- data.frame(IBD_estimate = ibd_value, Jaccard = jaccard)
   
   # Predict probabilities using the fitted logistic regression model
   prediction_prob <- predict(fit_IBD, newdata = newdata, type = "response")
@@ -307,5 +306,4 @@ print(REAL_DATA)
 write.csv(REAL_DATA, paste0(site, "_REAL_DATA_PREDICTIONS.csv"), row.names = F)
 
 ggsave(paste0(site, "_REAL_DATA_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
-
 
