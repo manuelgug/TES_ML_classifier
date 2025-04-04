@@ -1,12 +1,13 @@
 
 library(dplyr)
 library(stringr)
+library(ggplot2)
 
 
 
 ####### 0) PARAMETERS------------------
 
-site <- "Zambezia"
+site <- "Tete"
 
 cum_curve_threshold <- 0.99
 
@@ -14,6 +15,8 @@ main_dir <- "." # directory where all the filtered runs data are located
 metadata_file <- paste0("metadata_tes_", site, ".csv") # should have the nidas, the timepoints and the pairs to which samples belong to
 maf_filter <- 0.02
 min_allele_read_count <- 10 
+
+OPTIM_AMPSET = FALSE # if FALSE, use 20 madhito amps if TRUE, select the top n most variable amps that sum cumumalite MHe of 0.99 for the data
 
 
 
@@ -193,6 +196,11 @@ selected_amps <- amps_data[amps_data$in_n_samples == max(amps_data$in_n_samples)
 # subset data based on amplicons
 data_all <- data_all[data_all$locus %in% selected_amps,]
 
+
+
+##################### SELECT TOP N AMPS USING THE CUMULATIVE CURVE #############################3
+
+
 # calculate heterozygosity of loci and remove those with He = 0
 heterozygosity_per_sample <- data_all %>% #Compute Hₑ per sample per locus
   group_by(sampleID, locus) %>%
@@ -216,76 +224,159 @@ hist(variability_per_locus$mean_He)
 
 variability_per_locus$locus <- as.factor(variability_per_locus$locus)
 
-amps_mean_He <- ggplot(variability_per_locus, aes(x = reorder(locus, mean_He), y = mean_He)) +
-  geom_bar(stat = "identity", color = "black") +
-  # geom_errorbar(aes(ymin = mean_He - sd_He, ymax = mean_He + sd_He), 
-  #               width = 0.4, color = "black") +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  labs(title = "",
-       x = "Locus",
-       y = "Mean He")+
-  coord_flip()
-
-amps_mean_He
 
 #ggsave(paste0("amps_mean_He_", site, ".png"), amps_mean_He, dpi = 300, height = 18, width = 10, bg = "white")
+  
+if(OPTIM_AMPSET){  
+  
+  # variability_per_locus must be sorted descending by mean_He
+  variability_per_locus <- variability_per_locus %>% 
+    arrange(desc(mean_He)) %>%
+    mutate(prob_identity = 1 - mean_He)
+  
+  # Initialize a vector to hold cumulative multilocus heterozygosity
+  n_loci <- nrow(variability_per_locus)
+  cumulative_He <- numeric(n_loci)
+  
+  # Calculate cumulative multilocus heterozygosity using the product of (1 - He)
+  for (i in 1:n_loci) {
+    prod_identity <- prod(variability_per_locus$prob_identity[1:i])
+    cumulative_He[i] <- 1 - prod_identity
+  }
+  
+  # Create a data frame for plotting
+  cum_curve <- data.frame(
+    loci_included = 1:n_loci,
+    multilocus_He = cumulative_He
+  )
+  
+  
+  amps_var_data <- cbind(variability_per_locus, cum_curve)
+  
+  write.csv(amps_var_data, paste0("amps_variation_", site, ".csv"), row.names = F)
+  
+  
+  # Plot the cumulative diversity curve
+  cum_curve_plot <- ggplot(cum_curve, aes(x = loci_included, y = multilocus_He)) +
+    geom_line(color = "black") +
+    geom_point(color = "red") +
+    labs(
+      x = "Number of Loci (ordered by descending mean He)",
+      y = "Cumulative Multilocus Heterozygosity",
+      title = paste0("Cumulative Diversity Curve for ", site)
+    ) +
+    theme_minimal()
+  
+  cum_curve_plot
+  
+  ggsave(paste0("cumulative_diversity_curve_", site, ".png"), cum_curve_plot, dpi = 300, height = 7, width = 7, bg = "white")
 
 
-# variability_per_locus must be sorted descending by mean_He
-variability_per_locus <- variability_per_locus %>% 
-  arrange(desc(mean_He)) %>%
-  mutate(prob_identity = 1 - mean_He)
+  
+  # select top n amps
+  top_n_amps <- max(cum_curve[cum_curve$multilocus_He < 0.99,]$loci_included)
+  
+  # keep top 50 most variable amps
+  top_var_amps <- variability_per_locus[1:top_n_amps,]$locus
+  
+  # subset data based on amplicons
+  data_all <- data_all[data_all$locus %in% top_var_amps,]
 
-# Initialize a vector to hold cumulative multilocus heterozygosity
-n_loci <- nrow(variability_per_locus)
-cumulative_He <- numeric(n_loci)
-
-# Calculate cumulative multilocus heterozygosity using the product of (1 - He)
-for (i in 1:n_loci) {
-  prod_identity <- prod(variability_per_locus$prob_identity[1:i])
-  cumulative_He[i] <- 1 - prod_identity
+} else {
+  
+  ##################### SELECT MADHITO'S 20 DIVERSITY AMPS #############################3
+  
+  madhito_amps <- read.csv("madhito_20amps.csv")
+  
+  data_all <- data_all[data_all$locus %in% madhito_amps$locus,]
+  
+  
+  
+  #plot madhito
+  madhito_amps$color <- "selected_madhito_amps"
+  
+  used_amps <- unique(data_all$locus)
+  
+  variability_per_locus2 <- left_join(variability_per_locus, madhito_amps, by = c("locus"))
+  
+  variability_per_locus2$used <- ifelse(variability_per_locus2$locus %in% used_amps, TRUE, FALSE)
+  
+  
+  amps_mean_He <- ggplot(variability_per_locus2, aes(x = reorder(locus, mean_He), y = mean_He, fill = color)) +
+    geom_bar(stat = "identity", color = "black") +
+    
+    # # Add downward arrows for bars where 'used' is TRUE
+    # geom_segment(data = variability_per_locus2 %>% filter(used == TRUE), 
+    #              aes(x = reorder(locus, mean_He), 
+    #                  xend = reorder(locus, mean_He), 
+    #                  y = mean_He + 0.05,  # Start above the bar
+    #                  yend = mean_He + 0.02),  # Point downward toward the bar
+    #              arrow = arrow(length = unit(0.1, "inches")), 
+    #              color = "black", size = 0.7) +
+    
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    labs(title = "",
+         x = "Loci shared across TES samples",
+         y = "Mean He across TES samples",
+         fill = "") +
+    coord_flip()+
+    guides(fill=FALSE)
+  
+  amps_mean_He
+  
+  ggsave(paste0("amps_mean_He_", site, ".png"), amps_mean_He, dpi = 300, height = 12, width = 10, bg = "white")
+  
+  
+  #### CALCULATE cumulative MHE for the selected madhito amps ###
+  
+  selected_madhito_amps<- variability_per_locus2[!is.na(variability_per_locus2$color),]
+  
+  # variability_per_locus must be sorted descending by mean_He
+  selected_madhito_amps <- selected_madhito_amps %>% 
+    arrange(desc(mean_He)) %>%
+    mutate(prob_identity = 1 - mean_He)
+  
+  # Initialize a vector to hold cumulative multilocus heterozygosity
+  n_loci <- nrow(selected_madhito_amps)
+  cumulative_He <- numeric(n_loci)
+  
+  # Calculate cumulative multilocus heterozygosity using the product of (1 - He)
+  for (i in 1:n_loci) {
+    prod_identity <- prod(selected_madhito_amps$prob_identity[1:i])
+    cumulative_He[i] <- 1 - prod_identity
+  }
+  
+  # Create a data frame for plotting
+  cum_curve <- data.frame(
+    loci_included = 1:n_loci,
+    multilocus_He = cumulative_He
+  )
+  
+  
+  amps_var_data <- cbind(selected_madhito_amps, cum_curve) %>% select(locus, mean_He, multilocus_He)
+  
+  write.csv(amps_var_data, paste0("amps_variation_", site, ".csv"), row.names = F)
+  
+  
+  # Plot the cumulative diversity curve
+  cum_curve_plot <- ggplot(cum_curve, aes(x = loci_included, y = multilocus_He)) +
+    geom_line(color = "black") +
+    geom_point(color = "red") +
+    labs(
+      x = "Number of Shared madhito Loci (ordered by descending mean He)",
+      y = "Cumulative Multilocus Heterozygosity",
+      title = ""
+    ) +
+    theme_minimal()+
+    ylim(NA,1)
+  
+  cum_curve_plot
+  
+  ggsave(paste0("cumulative_diversity_curve_", site, ".png"), cum_curve_plot, dpi = 300, height = 7, width = 7, bg = "white")
+  
 }
 
-# Create a data frame for plotting
-cum_curve <- data.frame(
-  loci_included = 1:n_loci,
-  multilocus_He = cumulative_He
-)
-
-
-amps_var_data <- cbind(variability_per_locus, cum_curve)
-
-write.csv(amps_var_data, paste0("amps_variation_", site, ".csv"), row.names = F)
-
-
-# Plot the cumulative diversity curve
-cum_curve_plot <- ggplot(cum_curve, aes(x = loci_included, y = multilocus_He)) +
-  geom_line(color = "black") +
-  geom_point(color = "red") +
-  labs(
-    x = "Number of Loci (ordered by descending mean He)",
-    y = "Cumulative Multilocus Heterozygosity",
-    title = paste0("Cumulative Diversity Curve for ", site)
-  ) +
-  theme_minimal()
-
-cum_curve_plot
-
-ggsave(paste0("cumulative_diversity_curve_", site, ".png"), cum_curve_plot, dpi = 300, height = 7, width = 7, bg = "white")
-
-
-
-##################### SELECT TOP N AMPS USING THE CUMULATIVE CURVE #############################3
-
-# select top n amps
-top_n_amps <- max(cum_curve[cum_curve$multilocus_He < 0.99,]$loci_included)
-
-# keep top 50 most variable amps
-top_var_amps <- variability_per_locus[1:top_n_amps,]$locus
-
-# subset data based on amplicons
-data_all <- data_all[data_all$locus %in% top_var_amps,]
 
 
 ####### 5) CHECKS --------
