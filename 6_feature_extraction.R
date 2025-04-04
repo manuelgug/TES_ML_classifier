@@ -36,8 +36,8 @@ if (DATA_TYPE == "TRAINING_DATA") {
 
   PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(read_counts = reads)  
   PAIRS_GENOMIC <- PAIRS_GENOMIC %>% rename(NIDA = sampleID) # format genomic file
-  PAIRS_GENOMIC <- PAIRS_GENOMIC %>%
-    separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE)
+  suppressWarnings(PAIRS_GENOMIC <- PAIRS_GENOMIC %>%
+    separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE))
   PAIRS_GENOMIC <- inner_join(PAIRS_METADATA, PAIRS_GENOMIC, by = "NIDA")
   
   PAIRS_METADATA <- PAIRS_METADATA %>% select(PairsID, NIDA, time_point) # format metadata file
@@ -120,22 +120,56 @@ if (DATA_TYPE == "REAL_DATA"){
   
   metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   
-  metadata_updated$post_effective_coi_med <- round(metadata_updated$post_effective_coi_med)
+  metadata_updated$naive_coi <- round(metadata_updated$naive_coi)
   
   metadata_updated_wide <- metadata_updated %>%
     pivot_wider(
       id_cols = PairsID, 
       names_from = time_point, 
-      values_from = c(NIDA, post_effective_coi_med), 
+      values_from = c(NIDA, naive_coi), 
       names_glue = "{.value}_{time_point}"
     )
  
-  metadata_updated_wide$eCOI_pairs <- paste0(metadata_updated_wide$post_effective_coi_med_D0, "__", metadata_updated_wide$post_effective_coi_med_Dx)
+  metadata_updated_wide$eCOI_pairs <- paste0(metadata_updated_wide$naive_coi_D0, "__", metadata_updated_wide$naive_coi_Dx)
    
   dres0_long_final_summarized <- merge(dres0_long_final_summarized, metadata_updated_wide[c("PairsID", "eCOI_pairs")], by = "PairsID")
   
 }
 
 
-write.csv(dres0_long_final_summarized, paste0(site,"_", DATA_TYPE,".csv"), row.names = F)
+
+######33 calculate jaccard
+
+# Function to compute Jaccard index
+jaccard_index <- function(set1, set2) {
+  intersection <- length(intersect(set1, set2))
+  union <- length(union(set1, set2))
+  if (union == 0) return(NA)  # Avoid division by zero
+  return(intersection / union)
+}
+
+# Compute Jaccard similarity for each PairsID
+jaccard_results <- PAIRS_GENOMIC[, .(
+  Jaccard = jaccard_index(
+    allele[NIDA == unique(NIDA)[1]],  # Alleles for first sample
+    allele[NIDA == unique(NIDA)[2]]   # Alleles for second sample
+  )
+), by = PairsID]
+
+
+
+
+##### MERGE FEATURES AND OUTPUT ------
+
+FEATURES <- left_join(dres0_long_final_summarized, jaccard_results, by = "PairsID")
+
+
+write.csv(FEATURES, paste0(site,"_", DATA_TYPE,".csv"), row.names = F)
+
+
+
+
+
+
+
 
