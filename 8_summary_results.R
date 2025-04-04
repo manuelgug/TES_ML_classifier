@@ -88,6 +88,31 @@ dev.off()
 
 
 
+##### 3) DUMMY MODEL PERFORMANCE -----
+
+labels <- c("A", "B", "C", "D")
+
+image_list <- lapply(1:length(sites), function(i) {
+  img_path <- paste0(sites[i], "_sensitivity_dummy_model_comparison.png")
+  img <- rasterGrob(readPNG(img_path), interpolate = TRUE)
+  
+  gTree(children = gList(
+    img,
+    textGrob(labels[i], x = unit(0.05, "npc"), y = unit(0.95, "npc"),
+             gp = gpar(fontsize = 20, fontface = "bold"))
+  ))
+})
+
+# Save the 2x2 panel as a PNG
+png("DUMMY_MODEL_PERFORMANCE_RESULTS_ACROSS_SITES.png", width = 8, height = 8, units = "in", res = 300)
+
+grid.arrange(grobs = image_list, ncol = 2, nrow = 2)
+
+dev.off()
+
+
+
+
 ##### 3) PREDICTION RESULTS -----
 
 predictions_Results <- data.frame()
