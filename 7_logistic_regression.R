@@ -9,7 +9,6 @@ library(broom)
 site <- "Tete"
 
 
-
 ### 1) IMPORT TRAINING AND REAL DATA ----------
 
 TRAINING_DATA <- read.csv(paste0(site, "_TRAINING_DATA.csv"), row.names = 1) 
@@ -19,6 +18,9 @@ LABELS$labels <- as.factor(LABELS$labels)
 
 REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
+features_to_use <- c("IBD_estimate", "jaccard_similarity", "allele_retention_rate", "allele_gain", "locus_concordance_rate")
+
+corrplot::corrplot(cor(TRAINING_DATA[features_to_use], use = "complete.obs"), "pie")
 
 
 ### 2) SPLIT DATA ------------
@@ -29,12 +31,12 @@ train_data <- TRAINING_DATA[train_indices, ]
 test_data <- TRAINING_DATA[-train_indices, ]
 
 # Step 2: Extract Metadata and Labels
-TRAIN_META <- train_data %>% select(-IBD_estimate, -Jaccard)
-TRAIN <- train_data %>% select(IBD_estimate, Jaccard)
+TRAIN_META <- train_data %>% select(-all_of(features_to_use))
+TRAIN <- train_data %>% select(all_of(features_to_use))
 TRAIN_labels <- LABELS[train_indices, ]
 
-TEST_META <- test_data %>% select(-IBD_estimate, -Jaccard)
-TEST <- test_data %>% select(IBD_estimate, Jaccard)
+TEST_META <- test_data %>% select(-all_of(features_to_use))
+TEST <- test_data %>% select(all_of(features_to_use))
 TEST_labels <- LABELS[-train_indices, ]
 
 # Step 3: Verify Stratification
@@ -51,12 +53,37 @@ table(TEST_labels)
 ##### 4) TEST MODEL USING IBD ONLY (BEST FEATURE)--------
 
 # Create training and test data frames for the current feature
-df_train_IBD <- data.frame(TRAIN[c("IBD_estimate", "Jaccard")], label = as.factor(TRAIN_labels))
-df_test_IBD <- data.frame(TEST[c("IBD_estimate", "Jaccard")], label = as.factor(TEST_labels))
+df_train_IBD <- data.frame(TRAIN[features_to_use], label = as.factor(TRAIN_labels))
+df_test_IBD <- data.frame(TEST[features_to_use], label = as.factor(TEST_labels))
 
 # Fit a simple logistic regression on the training set
 fit_IBD <- glm(label ~ ., data = df_train_IBD, family = binomial)
 summary(fit_IBD)
+
+### feature importance
+# Get the coefficients from the model
+coef_values <- summary(fit_IBD)$coefficients[, "Estimate"]
+
+# Calculate the absolute values of the coefficients
+coef_abs_values <- abs(coef_values)
+
+# Remove the intercept
+coef_abs_values <- coef_abs_values[-1]
+
+# Create a data frame for visualization
+coef_df <- data.frame(
+  Feature = names(coef_abs_values),
+  Importance = coef_abs_values
+)
+
+
+# Plot feature importance
+ggplot(coef_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Feature Importance", x = "Feature", y = "Importance") +
+  theme_minimal()
+
 
 # Predict probabilities on the test (holdout) set
 preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "response")
@@ -213,26 +240,6 @@ for (strain_comb in unique(TEST_META$eCOI_pairs)) {
   ))
 }
 
-# # Combine dummy and LR model results
-# best_decision_thresholds$model <- "LogReg"
-# comparison_results <- bind_rows(best_decision_thresholds[c("eCOI_pairs", "sensitivity", "specificity", "model")], dummy_results)
-# comparison_results <- comparison_results[comparison_results$eCOI_pairs %in% unique(TRAINING_DATA$eCOI_pairs),]
-# 
-# # Plot comparison
-# dummy_comparison <- ggplot(comparison_results, aes(x = eCOI_pairs, y = sensitivity, fill = model)) +
-#   geom_bar(stat = "identity", position = "dodge") +
-#   labs(title = "",
-#        x = "eCOI Pairs",
-#        y = "Sensitivity") +
-#   theme_minimal() +
-#   scale_fill_manual(values = c("LogReg" = "#008080", "dummy_random" = "#002080")) +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#   geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")
-# 
-# dummy_comparison
-# 
-# ggsave(paste0(site, "_sensitivity_dummy_model_comparison.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
-
 # Reshape data to long format for easy plotting
 dummy_results_long <- dummy_results %>%
   select(eCOI_pairs, sensitivity, specificity) %>%
@@ -276,13 +283,13 @@ REAL_DATA$predictions <- NA
 
 # Loop over each row in REAL_DATA to apply the corresponding decision_threshold
 for (i in 1:nrow(REAL_DATA)) {
-  # Subset the current row's IBD_estimate and decision_threshold
-  ibd_value <- REAL_DATA$IBD_estimate[i]
-  jaccard <- REAL_DATA$Jaccard[i]
+  
   decision_threshold <- REAL_DATA$decision_threshold[i]
   
+  feats <- REAL_DATA %>% select(all_of(features_to_use))
+  
   # Create a new data frame for prediction (based on the current decision_threshold)
-  newdata <- data.frame(IBD_estimate = ibd_value, Jaccard = jaccard)
+  newdata <-  feats[i,]
   
   # Predict probabilities using the fitted logistic regression model
   prediction_prob <- predict(fit_IBD, newdata = newdata, type = "response")
@@ -296,7 +303,7 @@ for (i in 1:nrow(REAL_DATA)) {
 
 }
 
-REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, eCOI_pairs, everything()) %>% arrange(PairsID)
+REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, eCOI_pairs, c(features_to_use), decision_threshold, prediction_prob, predictions) %>% arrange(PairsID)
 
 print(REAL_DATA)
 
