@@ -3,9 +3,9 @@ library(moire)
 library(dplyr)
 
 
-site <- "Tete"
+site <- "Inhambane"
 
-# ECOI = FALSE
+ECOI = FALSE
 
 data <- read.csv(paste0("genomic_updated_", site, ".csv"))
 data <- data %>% rename(sample_id = sampleID)
@@ -16,7 +16,7 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsA
 
 
 
-# if(ECOI){
+if(ECOI){
   
   # set MOIRE parameters
   dat_filter <- moire::load_long_form_data(data)
@@ -48,15 +48,15 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsA
   metadata_updated2 <- merge(metadata_updated, coi_stats, by = c("NIDA"))
   metadata_updated2 <- metadata_updated2 %>% arrange(SampleID)
   
-# }else{
-#   
-#   # CALCULATE ONLY NAIVE COI
-#   
-#   naive_coi <- data %>% group_by(sample_id, locus) %>% summarise(n_alleles=length(unique(allele))) %>% group_by(sample_id) %>% summarise(naive_coi = max(n_alleles)) %>% rename(NIDA= sample_id)
-#   naive_coi$NIDA <- gsub("__.*", "", naive_coi$NIDA)
-#   metadata_updated2 <- merge(metadata_updated, naive_coi, by = c("NIDA"))
-#   metadata_updated2 <- metadata_updated2 %>% arrange(SampleID)
-# 
-# }
+}else{
+
+  # CALCULATE ONLY NAIVE COI
+
+  naive_coi <- data %>% group_by(sample_id, locus) %>% summarise(n_alleles=length(unique(allele))) %>% group_by(sample_id) %>% summarise(naive_coi = max(n_alleles)) %>% rename(NIDA= sample_id)
+  naive_coi$NIDA <- gsub("__.*", "", naive_coi$NIDA)
+  metadata_updated2 <- merge(metadata_updated, naive_coi, by = c("NIDA"))
+  metadata_updated2 <- metadata_updated2 %>% arrange(SampleID)
+
+}
   
 write.csv(metadata_updated2, paste0("metadata_updated_", site, ".csv"), row.names = F)
