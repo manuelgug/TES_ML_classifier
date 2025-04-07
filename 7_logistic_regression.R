@@ -18,13 +18,14 @@ LABELS$labels <- as.factor(LABELS$labels)
 
 REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
-features_to_use <- c("IBD_estimate", "jaccard_similarity", "allele_retention_rate", "allele_gain", "locus_concordance_rate")
+features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", "locus_concordance_rate")]
 
-corrplot::corrplot(cor(TRAINING_DATA[features_to_use], use = "complete.obs"), "pie")
+corrplot::corrplot(cor(TRAINING_DATA %>% select(features_to_use), use = "complete.obs"), "pie")
 
 
 ### 2) SPLIT DATA ------------
 
+set.seed(1987)
 # Step 1: Stratified Sampling by `pair_type`
 train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
 train_data <- TRAINING_DATA[train_indices, ]
@@ -56,13 +57,25 @@ table(TEST_labels)
 df_train_IBD <- data.frame(TRAIN[features_to_use], label = as.factor(TRAIN_labels))
 df_test_IBD <- data.frame(TEST[features_to_use], label = as.factor(TEST_labels))
 
-# Fit a simple logistic regression on the training set
-fit_IBD <- glm(label ~ ., data = df_train_IBD, family = binomial)
-summary(fit_IBD)
+# Set up 10-fold cross-validation
+ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+# Re-level factor so that "R" is the positive class
+df_train_IBD$label <- relevel(df_train_IBD$label, ref = "R")
+
+# Train logistic regression model with cross-validation
+fit_IBD <- train(label ~ ., 
+                 data = df_train_IBD, 
+                 method = "glm", 
+                 family = "binomial", 
+                 trControl = ctrl, 
+                 metric = "ROC")
+
+print(fit_IBD)
 
 ### feature importance
 # Get the coefficients from the model
-coef_values <- summary(fit_IBD)$coefficients[, "Estimate"]
+coef_values <- summary(fit_IBD$finalModel)$coefficients[, "Estimate"]
 
 # Calculate the absolute values of the coefficients
 coef_abs_values <- abs(coef_values)
@@ -86,7 +99,7 @@ ggplot(coef_df, aes(x = reorder(Feature, Importance), y = Importance)) +
 
 
 # Predict probabilities on the test (holdout) set
-preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "response")
+preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "prob")[, "R"]
 
 # Define the range of decision_thresholds
 decision_thresholds <- seq(0, 1, by = 0.05)
@@ -260,7 +273,7 @@ dummy_comparison <- ggplot(dummy_results_long, aes(x = eCOI_pairs, y = Value, fi
 
 dummy_comparison
 
-ggsave(paste0(site, "_sensitivity_dummy_model_comparison.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
+ggsave(paste0(site, "_sensitivity_dummy_model_comparison_LR.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
 
 
 
@@ -289,10 +302,10 @@ for (i in 1:nrow(REAL_DATA)) {
   feats <- REAL_DATA %>% select(all_of(features_to_use))
   
   # Create a new data frame for prediction (based on the current decision_threshold)
-  newdata <-  feats[i,]
+  newdata <- feats[i, , drop = FALSE]
   
   # Predict probabilities using the fitted logistic regression model
-  prediction_prob <- predict(fit_IBD, newdata = newdata, type = "response")
+  prediction_prob <- predict(fit_IBD, newdata = newdata, type = "prob")[, "R"]
   
   # Classify using the current decision_threshold (instead of 0.5)
   prediction_class <- ifelse(prediction_prob >= decision_threshold, "R", "NI")
@@ -300,7 +313,6 @@ for (i in 1:nrow(REAL_DATA)) {
   # Store the prediction in the REAL_DATA data frame
   REAL_DATA$prediction_prob[i] <- prediction_prob
   REAL_DATA$predictions[i] <- prediction_class
-
 }
 
 REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, eCOI_pairs, c(features_to_use), decision_threshold, prediction_prob, predictions) %>% arrange(PairsID)
@@ -313,4 +325,3 @@ print(REAL_DATA)
 write.csv(REAL_DATA, paste0(site, "_REAL_DATA_PREDICTIONS.csv"), row.names = F)
 
 ggsave(paste0(site, "_REAL_DATA_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
-
