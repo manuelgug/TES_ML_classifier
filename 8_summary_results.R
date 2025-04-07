@@ -23,6 +23,7 @@ for (site in sites){
   clones_genomic <- read.csv(paste0("clones_genomic_data_",site,".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
   metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   PAIRS_SUMMARY <- read.csv(paste0("PAIRS_SUMMARY_",site,".csv"))
+  amps_variation <- read.csv(paste0("amps_variation_", site, ".csv"))
   
   
   # amount of regional samples used
@@ -30,6 +31,9 @@ for (site in sites){
   
   # amount of amplicons that had multilocus He up to 0.99
   N_LOCI <- length(unique(data$locus))
+  
+  # multiolcus He of the amplicon set
+  CUM_MHE <- max(amps_variation$multilocus_He)
   
   # amount of clones across tes and site(regional) data used in the study
   N_CLONES <- length(unique(clones_genomic$sampleID)) 
@@ -53,7 +57,7 @@ for (site in sites){
   R_PROP <- sum(PAIRS_SUMMARY$R_size) / N_PAIRS
   
   # row 
-  data_row <- data.frame(site, N_REGIONAL, N_LOCI, N_CLONES, MAX_COI, N_MIXES, N_PAIRS, N_PAIR_TYPES, NI_PROP, R_PROP)
+  data_row <- data.frame(site, N_REGIONAL, N_LOCI, CUM_MHE, N_CLONES, MAX_COI, N_MIXES, N_PAIRS, N_PAIR_TYPES, NI_PROP, R_PROP)
   
   summary_Results<- rbind(summary_Results, data_row)
   
@@ -93,7 +97,7 @@ dev.off()
 labels <- c("A", "B", "C", "D")
 
 image_list <- lapply(1:length(sites), function(i) {
-  img_path <- paste0(sites[i], "_sensitivity_dummy_model_comparison.png")
+  img_path <- paste0(sites[i], "_sensitivity_dummy_model_comparison_LR.png")
   img <- rasterGrob(readPNG(img_path), interpolate = TRUE)
   
   gTree(children = gList(
