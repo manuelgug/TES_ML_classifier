@@ -6,7 +6,7 @@ library(ggplot2)
 library(broom)
 
 
-site <- "Tete"
+site <- "Zambezia"
 
 
 ### 1) IMPORT TRAINING AND REAL DATA ----------
@@ -18,14 +18,14 @@ LABELS$labels <- as.factor(LABELS$labels)
 
 REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
-features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", "locus_concordance_rate")]
+features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", "locus_concordance_rate", "conserved_haplotype_blocks", "fisher_dispersion")]
 
 corrplot::corrplot(cor(TRAINING_DATA %>% select(features_to_use), use = "complete.obs"), "pie")
 
 
 ### 2) SPLIT DATA ------------
 
-set.seed(1987)
+set.seed(420)
 # Step 1: Stratified Sampling by `pair_type`
 train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
 train_data <- TRAINING_DATA[train_indices, ]
@@ -72,6 +72,8 @@ fit_IBD <- train(label ~ .,
                  metric = "ROC")
 
 print(fit_IBD)
+
+fit_IBD$finalModel
 
 ### feature importance
 # Get the coefficients from the model
@@ -182,7 +184,8 @@ metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, 
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
-  geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")
+  geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")
 
 metrics
 
@@ -208,7 +211,7 @@ best_decision_thresholds_long <- best_decision_thresholds %>%
                values_to = "Value")
 
 # Plot both Sensitivity and Specificity in the same graph
-sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = log(Value), linetype = Metric)) +
+sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, linetype = Metric)) +
   geom_line() +
   #geom_point(data = best_decision_thresholds_long, aes(x = decision_threshold, y = log(Value)), shape = 19, size = 3, stroke = 1.5) + 
   geom_vline(data = best_decision_thresholds, aes(xintercept = decision_threshold), color = "red", linetype = "solid") +
@@ -268,7 +271,8 @@ dummy_comparison <- ggplot(dummy_results_long, aes(x = eCOI_pairs, y = Value, fi
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
-  geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")+
+  geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")+
   ylim(0,1)
 
 dummy_comparison
@@ -279,11 +283,11 @@ ggsave(paste0(site, "_sensitivity_dummy_model_comparison_LR.png"), dummy_compari
 
 ##### 6) TEST MODEL ON REAL DATA USING IBD ONLY (BEST FEATURE) --------
 
-# cover both directions 1__2 and 2__1
-best_decision_thresholds_rev <- best_decision_thresholds %>%
-  mutate(eCOI_pairs = sapply(strsplit(eCOI_pairs, "__"), function(x) paste0(rev(x), collapse = "__")))
-
-best_decision_thresholds <- unique(rbind(best_decision_thresholds, best_decision_thresholds_rev))
+# # cover both directions 1__2 and 2__1
+# best_decision_thresholds_rev <- best_decision_thresholds %>%
+#   mutate(eCOI_pairs = sapply(strsplit(eCOI_pairs, "__"), function(x) paste0(rev(x), collapse = "__")))
+# 
+# best_decision_thresholds <- unique(rbind(best_decision_thresholds, best_decision_thresholds_rev))
 
 #best_decision_thresholds$decision_threshold <- 0.5 # if wanting to use 0.5 for all real samples
 
