@@ -76,28 +76,43 @@ print(fit_IBD)
 fit_IBD$finalModel
 
 ### feature importance
-# Get the coefficients from the model
-coef_values <- summary(fit_IBD$finalModel)$coefficients[, "Estimate"]
+### feature importance
+# Extract coefficients from the final model
+coefs <- summary(fit_IBD$finalModel)$coefficients
+coefs_df <- as.data.frame(coefs)
+coefs_df$Variable <- rownames(coefs_df)
 
-# Calculate the absolute values of the coefficients
-coef_abs_values <- abs(coef_values)
+# Remove intercept for feature importance plot
+coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
 
-# Remove the intercept
-coef_abs_values <- coef_abs_values[-1]
+# Calculate absolute coefficient values to rank by importance
+coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate))
 
-# Create a data frame for visualization
-coef_df <- data.frame(
-  Feature = names(coef_abs_values),
-  Importance = coef_abs_values
-)
+# Sort by absolute coefficient value
+coefs_df <- coefs_df[order(coefs_df$AbsEstimate, decreasing = TRUE), ]
+
+# Create a color vector (positive coefficients in blue, negative in red)
+coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
 
 
-# Plot feature importance
-ggplot(coef_df, aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "skyblue") +
+# Add significance stars
+coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
+                                ifelse(coefs_df$`Pr(>|z|)` < 0.01, "**",
+                                       ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
+
+# Plot with significance indicators
+ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Significance), hjust = -0.2) +
   coord_flip() +
-  labs(title = "Feature Importance", x = "Feature", y = "Importance") +
-  theme_minimal()
+  scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
+  theme_minimal() +
+  labs(title = "Feature Importance in Logistic Regression Model",
+       subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+       x = "Features",
+       y = "Absolute Coefficient Value",
+       fill = "Coefficient Direction") +
+  theme(legend.position = "bottom")
 
 
 # Predict probabilities on the test (holdout) set
@@ -179,7 +194,7 @@ best_decision_thresholds_long <- best_decision_thresholds %>%
 metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
   labs(title = "",
-       x = "eCOI Pairs",
+       x = "Pair Type",
        y = "Value") +
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
@@ -218,7 +233,7 @@ sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, li
   facet_wrap(~eCOI_pairs) +
   labs(title = "",
        x = "Decision Threshold",
-       y = "Log(Value)") +
+       y = "Value") +
   theme_minimal()
 
 sens_spec_plot
@@ -266,7 +281,7 @@ dummy_results_long <- dummy_results %>%
 dummy_comparison <- ggplot(dummy_results_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
   labs(title = "",
-       x = "eCOI Pairs",
+       x = "Pair Type",
        y = "Value") +
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
