@@ -101,18 +101,24 @@ coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
                                        ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
 
 # Plot with significance indicators
-ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
   geom_bar(stat = "identity") +
-  geom_text(aes(label = Significance), hjust = -0.2) +
+  geom_text(aes(label = Significance, hjust = ifelse(AbsEstimate < 0, 1.2, -0.2))) +
   coord_flip() +
   scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
   theme_minimal() +
-  labs(title = "Feature Importance in Logistic Regression Model",
-       subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
-       x = "Features",
-       y = "Absolute Coefficient Value",
-       fill = "Coefficient Direction") +
+  labs(#title = "Feature Importance in Logistic Regression Model",
+    #subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+    x = "Features",
+    y = "log(Absolute Coefficient Value)",
+    fill = "Coefficient Direction") +
   theme(legend.position = "bottom")
+
+importance
+
+ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
+
+
 
 
 # Predict probabilities on the test (holdout) set
