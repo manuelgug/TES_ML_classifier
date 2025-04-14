@@ -4,27 +4,104 @@ library(reshape2)
 library(ggplot2)
 
 
-site <- "Zambezia"
+site <- "Tete"
 
 
-coi_stats <- read.csv(paste0("coi_stats_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 data <- read.csv(paste0("genomic_updated_",site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+data <- data[data$data_type == "tes",]
+coi_stats <- read.csv(paste0("coi_stats_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+
+# edit nidas
+data$sampleID <- gsub("__.*","", data$sampleID)
+coi_stats$NIDA <- gsub("__.*","", coi_stats$NIDA)
+
+# keep D0 samples only
+data <- left_join(data, metadata_updated[c("NIDA", "time_point")], by =c("sampleID" = "NIDA"))
+#data <- data[data$time_point == "D0",]
+
+coi_stats <- left_join(coi_stats, metadata_updated[c("NIDA", "time_point")], by =c("NIDA"))
+coi_stats <- coi_stats[coi_stats$time_point == "D0",]
+
+#allele frequencies
+AF <- moire::summarize_allele_freqs(readRDS(paste0("coi_mcmc_", site, ".RDS")))
+AF <- AF %>% select(locus, allele, post_allele_freqs_mean)
 
 
 
-###### 1) SEPARATE MONOCLONAL INFECTIONS -----
+###### 1) SEPARATE MONOCLONAL INFECTIONS from D0 -----
 
-clones <- coi_stats[coi_stats$post_effective_coi_med < 1.1,]$NIDA #ecoi < 1.1
+clones <- coi_stats[coi_stats$naive_coi < 1.1,]$NIDA #ecoi < 1.1 #  !grepl("__", coi_stats$NIDA) avoids clones from the tes study
 #clones <- coi_stats[coi_stats$naive_coi == 1,]$NIDA #naive coi = 1
 
 clones_genomic <- data[data$sampleID %in% clones,]
 
 
 
+###### 1) CREATE ALL POSSIBLE CLONES FROM POLYCLONAL INFECTIONS from D0 -----
+
+N_CLONES = 1000 - length(clones) # aim for 100 clones, minus the ones already isolated above
+
+data_polyclonal_D0 <- data[!data$sampleID %in% clones,] #subset polyclonal data
+
+polyclonal_samples <- unique(data_polyclonal_D0$sampleID)
+iterations <- ceiling(N_CLONES / length(polyclonal_samples)) # how many clones to draw from each sample
+
+
+# unction to perform random allele draws for each locus using AF as weights
+random_draw <- function(locus_data) {
+  slice_sample(locus_data, n = 1, weight_by = post_allele_freqs_mean) %>% pull(allele)
+}
+
+# Loop over each polyclonal sample
+sampled_monoclonals <- data.frame()
+
+for (sample_id in polyclonal_samples) {
+
+  samp <- data_polyclonal_D0[data_polyclonal_D0$sampleID == sample_id,]
+  
+  # Step 1: Join allele frequencies to loci in the sample dataframe (samp)
+  allele_combinations <- samp %>%
+    select(locus, allele) %>%
+    distinct() %>%
+    left_join(AF, by = c("locus", "allele"))
+  
+  # Step 3: Loop to generate random combinations (1 per clone) for the current sample
+  set.seed(42069)  # Set the seed for reproducibility
+  
+  for (i in 1:iterations) {
+
+    clone_id <- paste(sample_id, "__clone_", i, sep = "")
+    
+    # Step 4: Randomly draw one allele for each locus for this clone
+    clone_result <- allele_combinations %>%
+      group_by(locus) %>%
+      summarise(allele = random_draw(pick(everything())), .groups = "drop") %>%  # Use `summarise` instead of `mutate`
+      mutate(sampleID = clone_id) %>%
+      select(sampleID, locus, allele)
+    
+    clone_result <- left_join(clone_result, samp[c("allele", "reads", "norm.reads.locus", "data_type", "time_point")], by = c("allele"))
+    
+    # Step 5: Bind the result to the main dataframe
+    sampled_monoclonals <- bind_rows(sampled_monoclonals, clone_result)
+  }
+}
+
+# merge sampled monoclonals with clones
+all_clones <- rbind(sampled_monoclonals, clones_genomic)
+
+length(unique(all_clones$sampleID))
+
+
+# # check if clones are indeed monoallelic
+# check <- all_clones %>% group_by(sampleID, locus) %>% summarise(length(unique(allele)))
+# all(check$`length(unique(allele))`== 1)
+
+
 ###### 2) CALCULATE PAIRWISE PROPORTION OF SHARED ALLELES -----
 
 # compare alleles shared between coi = 1 samples
-alleles <- clones_genomic %>%
+alleles <- all_clones %>%
   group_by(sampleID) %>%
   summarize(alleles = list(allele))
 
@@ -77,7 +154,7 @@ ggsave(paste0("hist_shared_alleles_",site,".png"), hist, height = 5, width = 8, 
 ###### 3) CLEAN MONOCLONAL DATA ------
 
 # if 2 samples have all of their alleles shared, might as well just keep one of those to avoid repeated data 
-same_clones <- comparison_long[comparison_long$value == 1,] # separate comparisons that are the same clone
+same_clones <- comparison_long[comparison_long$value > 0.7,] # separate comparisons that are the same clone
 
 # group samples that are the same clone into a single group
 groups <- list()
@@ -107,12 +184,12 @@ groups <- lapply(groups, function(x) x[1])
 clones_to_remove <- unlist(groups)
 
 #remove redundant clones
-clones_genomic <- clones_genomic[!clones_genomic$sampleID %in% clones_to_remove,]
+all_clones <- all_clones[!all_clones$sampleID %in% clones_to_remove,]
 
-length(unique(clones_genomic$sampleID))
+length(unique(all_clones$sampleID))
 
 
 ###### 4) EXPORT CLONE DATA
 
-write.csv(clones_genomic, paste0("clones_genomic_data_",site,".csv"), row.names = F)
+write.csv(all_clones, paste0("clones_genomic_data_",site,".csv"), row.names = F)
 

@@ -5,7 +5,7 @@ library(tidyr)
 library(ggplot2)
 
 
-site <- "Zambezia"
+site <- "Tete"
 
 
 clones_genomic <- read.csv(paste0("clones_genomic_data_",site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
@@ -15,23 +15,32 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsA
 
 ###### 0) SUBSAMPLE CLONES FOR TRAINING DATA
 
+clone_cap = 50
+
 N_CLONES <- length(unique(clones_genomic$sampleID)) #change if needed
 
 length(unique(clones_genomic$sampleID))
 
 all_clones <- unique(clones_genomic$sampleID)
 
+tesclones <- all_clones[!grepl("_clone_", all_clones)] #clones from tes D0
+
+n_synthetic_clones <- clone_cap - length(tesclones) # clones needed to complete clone_cap
+
 set.seed(69420)
-subsampled_clones <- sample(all_clones, ifelse(N_CLONES > 50, 50, N_CLONES)) # cap at 50 clones
+subsampled_clones <- sample(all_clones, ifelse(N_CLONES > clone_cap, n_synthetic_clones, N_CLONES)) # cap at clone_cap clones
 
-clones_genomic <- clones_genomic[clones_genomic$sampleID %in% subsampled_clones, ]
+clones_genomic <- clones_genomic[clones_genomic$sampleID %in% c(subsampled_clones, tesclones), ] # tes clones are always kept
 
+# check if clones are indeed monoallelic
+check <- clones_genomic %>% group_by(sampleID, locus) %>% summarise(length(unique(allele)))
+all(check$`length(unique(allele))`== 1)
 
 
 ###### 1) IDENTIFY THE PAIRS DATA REQUIREMENTS ------
 
-min_coi <- round(min(metadata_updated$post_effective_coi_med))
-max_coi <- round(max(metadata_updated$post_effective_coi_med))
+min_coi <- round(min(metadata_updated$naive_coi))
+max_coi <- round(max(metadata_updated$naive_coi))
 
 
 
@@ -72,10 +81,9 @@ strain_mixes <- strain_mixes[sort(names(strain_mixes))]
 ####### 3) SUBSAMPLE THE MIXES -------
 
 # Define the initial sample size from the first data frame
-initial_sample_size <- 250 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
-sample_size <- initial_sample_size
+initial_sample_size <- 200 # number is arbitrarily selected # nrow(strain_mixes$mix_1) * 2  # nrow(strain_mixes$mix_2) ### <<<- originally set to mix_1 to have a well balanced dataset even though this sacrifices sample size. however, maybe 1 vs 1 is not that important to classify because differences in monoclonals are previously established, i mean, i'm choosing different monoclonals to build the mixes... might as well increase the sample size by balancing everything else in terms of # of possible mixs of 2
+initial_sample_size
 
-sample_size
 
 # Loop over each data frame in strain_mixes and apply the subsampling
 strain_mixes_subsampled <- list()

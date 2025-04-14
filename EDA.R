@@ -10,7 +10,7 @@ library(cluster)
 #----------------------------------------------------------
 # Data Import & Preparation
 #----------------------------------------------------------
-site <- "Cabo_Delgado"
+site <- "Zambezia"
 
 TRAINING_DATA <- read.csv(paste0(site, "_TRAINING_DATA.csv"), row.names = 1)
 TRAINING_DATA$eCOI_pairs <- paste0(TRAINING_DATA$D0_nstrains, "__", TRAINING_DATA$Dx_nstrains)

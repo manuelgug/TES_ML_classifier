@@ -1,6 +1,4 @@
 
-
-
 library(caret)    
 library(dplyr)    
 library(tidyr)    
@@ -8,9 +6,7 @@ library(ggplot2)
 library(broom)
 
 
-
 site <- "Zambezia"
-
 
 
 ### 1) IMPORT TRAINING AND REAL DATA ----------
@@ -22,31 +18,32 @@ LABELS$labels <- as.factor(LABELS$labels)
 
 REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
+features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", "locus_concordance_rate", "conserved_haplotype_blocks", "fisher_dispersion")]
+
+corrplot::corrplot(cor(TRAINING_DATA %>% select(features_to_use), use = "complete.obs"), "pie")
 
 
 ### 2) SPLIT DATA ------------
 
-# Assuming TRAINING_DATA and LABELS have the same number of rows and aligned order
 set.seed(420)
+# Step 1: Stratified Sampling by `pair_type`
+train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
+train_data <- TRAINING_DATA[train_indices, ]
+test_data <- TRAINING_DATA[-train_indices, ]
 
-n <- nrow(TRAINING_DATA)
-train_indices <- sample(1:n, size = floor(0.7 * n))
-test_indices <- setdiff(1:n, train_indices)
-
-# Split the data
-TRAIN <- TRAINING_DATA[train_indices, ]
-TRAIN_META <- TRAIN %>% select(-(1:which(names(TRAIN) == "IBD_estimate")))
-TRAIN <-TRAIN %>% select(1:which(names(TRAIN) == "IBD_estimate"))
+# Step 2: Extract Metadata and Labels
+TRAIN_META <- train_data %>% select(-all_of(features_to_use))
+TRAIN <- train_data %>% select(all_of(features_to_use))
 TRAIN_labels <- LABELS[train_indices, ]
 
+TEST_META <- test_data %>% select(-all_of(features_to_use))
+TEST <- test_data %>% select(all_of(features_to_use))
+TEST_labels <- LABELS[-train_indices, ]
+
+# Step 3: Verify Stratification
 prop.table(table(TRAIN_META$eCOI_pairs))
 prop.table(table(TRAIN_labels))
 table(TRAIN_labels)
-
-TEST <- TRAINING_DATA[test_indices, ]
-TEST_META <- TEST %>% select(-(1:which(names(TEST) == "IBD_estimate")))
-TEST <-TEST %>% select(1:which(names(TEST) == "IBD_estimate"))
-TEST_labels <- LABELS[test_indices, ]
 
 prop.table(table(TEST_META$eCOI_pairs))
 prop.table(table(TEST_labels))
@@ -57,15 +54,75 @@ table(TEST_labels)
 ##### 4) TEST MODEL USING IBD ONLY (BEST FEATURE)--------
 
 # Create training and test data frames for the current feature
-df_train_IBD <- data.frame(x = TRAIN[["IBD_estimate"]], label = as.factor(TRAIN_labels))
-df_test_IBD <- data.frame(x = TEST[["IBD_estimate"]], label = as.factor(TEST_labels))
+df_train_IBD <- data.frame(TRAIN[features_to_use], label = as.factor(TRAIN_labels))
+df_test_IBD <- data.frame(TEST[features_to_use], label = as.factor(TEST_labels))
 
-# Fit a simple logistic regression on the training set
-fit_IBD <- glm(label ~ x, data = df_train_IBD, family = binomial)
-summary(fit_IBD)
+# Set up 10-fold cross-validation
+ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+# Re-level factor so that "R" is the positive class
+df_train_IBD$label <- relevel(df_train_IBD$label, ref = "R")
+
+# Train logistic regression model with cross-validation
+fit_IBD <- train(label ~ ., 
+                 data = df_train_IBD, 
+                 method = "glm", 
+                 family = "binomial", 
+                 trControl = ctrl, 
+                 metric = "ROC")
+
+print(fit_IBD)
+
+fit_IBD$finalModel
+
+### feature importance
+### feature importance
+# Extract coefficients from the final model
+coefs <- summary(fit_IBD$finalModel)$coefficients
+coefs_df <- as.data.frame(coefs)
+coefs_df$Variable <- rownames(coefs_df)
+
+# Remove intercept for feature importance plot
+coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
+
+# Calculate absolute coefficient values to rank by importance
+coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate))
+
+# Sort by absolute coefficient value
+coefs_df <- coefs_df[order(coefs_df$AbsEstimate, decreasing = TRUE), ]
+
+# Create a color vector (positive coefficients in blue, negative in red)
+coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
+
+
+# Add significance stars
+coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
+                                ifelse(coefs_df$`Pr(>|z|)` < 0.01, "**",
+                                       ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
+
+# Plot with significance indicators
+importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Significance, hjust = ifelse(AbsEstimate < 0, 1.2, -0.2))) +
+  coord_flip() +
+  scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
+  theme_minimal() +
+  labs(#title = "Feature Importance in Logistic Regression Model",
+    #subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+    x = "Features",
+    y = "log(Absolute Coefficient Value)",
+    fill = "Coefficient Direction") +
+  theme(legend.position = "bottom")
+
+importance
+
+ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
+
+
+
 
 # Predict probabilities on the test (holdout) set
-preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "response")
+preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "prob")[, "R"]
 
 # Define the range of decision_thresholds
 decision_thresholds <- seq(0, 1, by = 0.05)
@@ -78,6 +135,8 @@ results <- data.frame(eCOI_pairs = character(),
                       R_pairs = numeric(),
                       NI_pairs = numeric(),
                       stringsAsFactors = FALSE)
+
+#decision_thresholds <- 0.5 # if wanting to use only 0.5 decision threshold for all pair types...
 
 # Loop through each decision_threshold
 for (thresh in decision_thresholds) {
@@ -141,12 +200,13 @@ best_decision_thresholds_long <- best_decision_thresholds %>%
 metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
   labs(title = "",
-       x = "eCOI Pairs",
+       x = "Pair Type",
        y = "Value") +
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
-  geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")
+  geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")
 
 metrics
 
@@ -172,14 +232,14 @@ best_decision_thresholds_long <- best_decision_thresholds %>%
                values_to = "Value")
 
 # Plot both Sensitivity and Specificity in the same graph
-sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = log(Value), linetype = Metric)) +
+sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, linetype = Metric)) +
   geom_line() +
   #geom_point(data = best_decision_thresholds_long, aes(x = decision_threshold, y = log(Value)), shape = 19, size = 3, stroke = 1.5) + 
   geom_vline(data = best_decision_thresholds, aes(xintercept = decision_threshold), color = "red", linetype = "solid") +
   facet_wrap(~eCOI_pairs) +
   labs(title = "",
        x = "Decision Threshold",
-       y = "Log(Value)") +
+       y = "Value") +
   theme_minimal()
 
 sens_spec_plot
@@ -211,31 +271,11 @@ for (strain_comb in unique(TEST_META$eCOI_pairs)) {
   
   dummy_results <- rbind(dummy_results, data.frame(
     eCOI_pairs = strain_comb,
-    model = dummy,
+    model = "dummy",
     sensitivity = cm$byClass["Sensitivity"],
     specificity = cm$byClass["Specificity"]
   ))
 }
-
-# # Combine dummy and LR model results
-# best_decision_thresholds$model <- "LogReg"
-# comparison_results <- bind_rows(best_decision_thresholds[c("eCOI_pairs", "sensitivity", "specificity", "model")], dummy_results)
-# comparison_results <- comparison_results[comparison_results$eCOI_pairs %in% unique(TRAINING_DATA$eCOI_pairs),]
-# 
-# # Plot comparison
-# dummy_comparison <- ggplot(comparison_results, aes(x = eCOI_pairs, y = sensitivity, fill = model)) +
-#   geom_bar(stat = "identity", position = "dodge") +
-#   labs(title = "",
-#        x = "eCOI Pairs",
-#        y = "Sensitivity") +
-#   theme_minimal() +
-#   scale_fill_manual(values = c("LogReg" = "#008080", "dummy_random" = "#002080")) +
-#   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-#   geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")
-# 
-# dummy_comparison
-# 
-# ggsave(paste0(site, "_sensitivity_dummy_model_comparison.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
 
 # Reshape data to long format for easy plotting
 dummy_results_long <- dummy_results %>%
@@ -247,27 +287,30 @@ dummy_results_long <- dummy_results %>%
 dummy_comparison <- ggplot(dummy_results_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
   geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
   labs(title = "",
-       x = "eCOI Pairs",
+       x = "Pair Type",
        y = "Value") +
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
-  geom_hline(yintercept = 0.9, linetype = "dashed", color = "black")+
+  geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+  geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")+
   ylim(0,1)
 
 dummy_comparison
 
-ggsave(paste0(site, "_sensitivity_dummy_model_comparison.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
+ggsave(paste0(site, "_sensitivity_dummy_model_comparison_LR.png"), dummy_comparison, bg = "white", dpi = 300, height = 5, width = 7)
 
 
 
 ##### 6) TEST MODEL ON REAL DATA USING IBD ONLY (BEST FEATURE) --------
 
-# cover both directions 1__2 and 2__1
-best_decision_thresholds_rev <- best_decision_thresholds %>%
-  mutate(eCOI_pairs = sapply(strsplit(eCOI_pairs, "__"), function(x) paste0(rev(x), collapse = "__")))
+# # cover both directions 1__2 and 2__1
+# best_decision_thresholds_rev <- best_decision_thresholds %>%
+#   mutate(eCOI_pairs = sapply(strsplit(eCOI_pairs, "__"), function(x) paste0(rev(x), collapse = "__")))
+# 
+# best_decision_thresholds <- unique(rbind(best_decision_thresholds, best_decision_thresholds_rev))
 
-best_decision_thresholds <- unique(rbind(best_decision_thresholds, best_decision_thresholds_rev))
+#best_decision_thresholds$decision_threshold <- 0.5 # if wanting to use 0.5 for all real samples
 
 #add threhold data
 REAL_DATA <- left_join(REAL_DATA, best_decision_thresholds[c("eCOI_pairs", "decision_threshold")], by = c("eCOI_pairs"))
@@ -278,15 +321,16 @@ REAL_DATA$predictions <- NA
 
 # Loop over each row in REAL_DATA to apply the corresponding decision_threshold
 for (i in 1:nrow(REAL_DATA)) {
-  # Subset the current row's IBD_estimate and decision_threshold
-  ibd_value <- REAL_DATA$IBD_estimate[i]
+  
   decision_threshold <- REAL_DATA$decision_threshold[i]
   
+  feats <- REAL_DATA %>% select(all_of(features_to_use))
+  
   # Create a new data frame for prediction (based on the current decision_threshold)
-  newdata <- data.frame(x = ibd_value)
+  newdata <- feats[i, , drop = FALSE]
   
   # Predict probabilities using the fitted logistic regression model
-  prediction_prob <- predict(fit_IBD, newdata = newdata, type = "response")
+  prediction_prob <- predict(fit_IBD, newdata = newdata, type = "prob")[, "R"]
   
   # Classify using the current decision_threshold (instead of 0.5)
   prediction_class <- ifelse(prediction_prob >= decision_threshold, "R", "NI")
@@ -294,10 +338,9 @@ for (i in 1:nrow(REAL_DATA)) {
   # Store the prediction in the REAL_DATA data frame
   REAL_DATA$prediction_prob[i] <- prediction_prob
   REAL_DATA$predictions[i] <- prediction_class
-
 }
 
-REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, eCOI_pairs, everything()) %>% arrange(PairsID)
+REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, eCOI_pairs, c(features_to_use), decision_threshold, prediction_prob, predictions) %>% arrange(PairsID)
 
 print(REAL_DATA)
 
@@ -307,5 +350,3 @@ print(REAL_DATA)
 write.csv(REAL_DATA, paste0(site, "_REAL_DATA_PREDICTIONS.csv"), row.names = F)
 
 ggsave(paste0(site, "_REAL_DATA_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
-
-
