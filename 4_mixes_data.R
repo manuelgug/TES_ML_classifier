@@ -2,12 +2,12 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(purrr)
+library(vegan)
 
 
 site <- "Inhambane"
-clone_cap <- 10
 initial_sample_size <- 200
-set.seed(69420)  # set once globally
+set.seed(69420) 
 
 # --- 1. Load Data ----
 clones_genomic <- read.csv(paste0("clones_genomic_data_", site, ".csv"),
@@ -21,18 +21,103 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"),
 # --- 2. Subsample Clones ----
 all_clones <- unique(clones_genomic$sampleID)
 tesclones <- all_clones[!grepl("_clone_", all_clones)]
-n_synthetic_clones <- clone_cap - length(tesclones)
-N_CLONES <- length(all_clones)
 
-#minimum amount of clones possible is the n of tes clones. 
-subsampled_clones <- sample(all_clones, ifelse(N_CLONES > clone_cap, 
-                                               ifelse(n_synthetic_clones < 0, 0, n_synthetic_clones)
-                                               , N_CLONES))
+paste0(length(tesclones), " natural clones found in the data.")
 
-keep_clones <- union(tesclones, subsampled_clones)
+#extract natural clones
+clones_genomic_TES <- filter(clones_genomic, sampleID %in% tesclones)
+
+# Create the matrix
+allele_matrix <- clones_genomic_TES %>%
+  select(sampleID, allele) %>%
+  distinct() %>%
+  mutate(present = 1) %>%
+  pivot_wider(names_from = allele, values_from = present, values_fill = 0)
+
+# Save sampleIDs and convert to matrix
+sample_ids <- allele_matrix$sampleID
+allele_matrix <- allele_matrix %>% select(-sampleID)
+allele_matrix <- as.matrix(allele_matrix)
+rownames(allele_matrix) <- sample_ids
+
+# make curve
+spec_accum <- specaccum(allele_matrix, method = "random")
+
+# 1. Build your accumulation data.frame
+df_accum <- data.frame(
+  sites = spec_accum$sites,
+  rich  = spec_accum$rich,
+  sd    = spec_accum$sd
+)
+
+# 2. Fit the SSasymp model
+fit_asymp <- nls(rich ~ SSasymp(sites, Asym, R0, lrc), data = df_accum)
+params    <- coef(fit_asymp)
+Asym      <- params["Asym"]
+R0        <- params["R0"]
+lrc       <- params["lrc"]
+
+# 3. Curve completeness threshold
+threshold <- 0.95
+target_richness <- threshold * Asym
+
+# 4. Solve for the required # of clones (sites) to hit that target:
+s_needed <- -log((target_richness - Asym)/(R0 - Asym)) / exp(lrc)
+additional <- s_needed - max(df_accum$sites)
+additional_clones_needed <- round(additional, 0)
+additional_clones_needed <- ifelse(additional_clones_needed < 0, 0, additional_clones_needed) # if curve is complete, no need for more clones
+
+# 5. Generate model predictions up to s_needed
+new_sites <- seq(0, s_needed, length.out = 200)
+df_model  <- data.frame(
+  sites = new_sites,
+  rich  = predict(fit_asymp, newdata = data.frame(sites = new_sites))
+)
+
+# 6. Plot everything
+CURVE <- ggplot(df_accum, aes(x = sites, y = rich)) +
+  # ±1 SD ribbon
+  geom_ribbon(aes(ymin = rich - sd, ymax = rich + sd),
+              fill = "steelblue", alpha = 0.3) +
+  # observed curve
+  geom_line(color = "steelblue", size = 1) +
+  # fitted model
+  geom_line(data = df_model, aes(x = sites, y = rich),
+            color = "red", size = 1) +
+  # vertical line at s_needed
+  geom_vline(xintercept = s_needed, linetype = "dashed") +
+  # annotate how many more clones
+  annotate("text",
+           x = s_needed, 
+           y = min(df_accum$rich),
+           label = paste0(additional_clones_needed, " more clones"),
+           angle = 90, vjust = 1.2) +
+  labs(
+    x     = "Number of clones sampled",
+    y     = "Cumulative unique alleles",
+    title = paste0("Rarefaction + Asymptote (", threshold*100, "%)"),
+    subtitle = paste0("Asymptote ≈ ", round(Asym,1),
+                      " | Observed final ≈ ", tail(df_accum$rich,1))
+  ) +
+  theme_minimal()
+
+CURVE
+
+ggsave(paste0(site, "_allele_curve.png"), CURVE, dpi = 300, height = 7, width = 8, bg = "white")
 
 
-clones_genomic <- filter(clones_genomic, sampleID %in% keep_clones)
+#### extract samples synthetic clones needed to complete the curve
+synthetic_clones <- all_clones[grepl("_clone_", all_clones)]
+additional_synthetic_clones <- sample(synthetic_clones, additional_clones_needed)
+clones_genomic_synthetic <- filter(clones_genomic, sampleID %in% additional_synthetic_clones)
+
+
+### put everything together
+clones_genomic <- rbind(clones_genomic_TES,clones_genomic_synthetic)
+
+N_CLONES <- length(unique(clones_genomic$sampleID))
+paste0("FINAL CLONES: ", N_CLONES)
+
 
 # Check: all clones are monoallelic per locus
 stopifnot(all(
@@ -87,16 +172,6 @@ strain_mixes <- setNames(c(list(mix_1 = data.frame(strain_1 = nidas)),
                          c("mix_1", paste0("mix_", coi_values)))
 
 ############################################
-
-# # Define mix sizes based on unique naive_coi values > 1
-# coi_values <- sort(unique(metadata_updated$naive_coi[metadata_updated$naive_coi > 1]))
-# 
-# strain_mixes <- lapply(coi_values, \(k) create_combinations_df(nidas, k))
-# 
-# # Add mix_1 manually
-# strain_mixes <- setNames(c(list(mix_1 = data.frame(strain_1 = nidas)),
-#                            strain_mixes),
-#                          c("mix_1", paste0("mix_", coi_values)))
 
 # --- 4. Subsample Mixes ----
 strain_mixes_subsampled <- lapply(strain_mixes, \(mix_df) {
