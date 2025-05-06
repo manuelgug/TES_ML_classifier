@@ -5,7 +5,7 @@ library(purrr)
 library(vegan)
 
 
-site <- "Inhambane"
+site <- "Zambezia"
 initial_sample_size <- 200
 set.seed(69420) 
 
@@ -21,102 +21,124 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"),
 # --- 2. Subsample Clones ----
 all_clones <- unique(clones_genomic$sampleID)
 tesclones <- all_clones[!grepl("_clone_", all_clones)]
-
-paste0(length(tesclones), " natural clones found in the data.")
+synthetic_clones <- all_clones[grepl("_clone_", all_clones)]
 
 #extract natural clones
 clones_genomic_TES <- filter(clones_genomic, sampleID %in% tesclones)
 
-# Create the matrix
-allele_matrix <- clones_genomic_TES %>%
-  select(sampleID, allele) %>%
-  distinct() %>%
-  mutate(present = 1) %>%
-  pivot_wider(names_from = allele, values_from = present, values_fill = 0)
-
-# Save sampleIDs and convert to matrix
-sample_ids <- allele_matrix$sampleID
-allele_matrix <- allele_matrix %>% select(-sampleID)
-allele_matrix <- as.matrix(allele_matrix)
-rownames(allele_matrix) <- sample_ids
-
-# make curve
-spec_accum <- specaccum(allele_matrix, method = "random")
-
-# 1. Build your accumulation data.frame
-df_accum <- data.frame(
-  sites = spec_accum$sites,
-  rich  = spec_accum$rich,
-  sd    = spec_accum$sd
-)
-
-# 2. Fit the SSasymp model
-fit_asymp <- nls(rich ~ SSasymp(sites, Asym, R0, lrc), data = df_accum)
-params    <- coef(fit_asymp)
-Asym      <- params["Asym"]
-R0        <- params["R0"]
-lrc       <- params["lrc"]
-
-# 3. Curve completeness threshold
-threshold <- 0.95
-target_richness <- threshold * Asym
-
-# 4. Solve for the required # of clones (sites) to hit that target:
-s_needed <- -log((target_richness - Asym)/(R0 - Asym)) / exp(lrc)
-additional <- s_needed - max(df_accum$sites)
-additional_clones_needed <- round(additional, 0)
-additional_clones_needed <- ifelse(additional_clones_needed < 0, 0, additional_clones_needed) # if curve is complete, no need for more clones
-
-# 5. Generate model predictions up to s_needed
-new_sites <- seq(0, s_needed, length.out = 200)
-df_model  <- data.frame(
-  sites = new_sites,
-  rich  = predict(fit_asymp, newdata = data.frame(sites = new_sites))
-)
-
-# 6. Plot everything
-CURVE <- ggplot(df_accum, aes(x = sites, y = rich)) +
-  # ±1 SD ribbon
-  geom_ribbon(aes(ymin = rich - sd, ymax = rich + sd),
-              fill = "steelblue", alpha = 0.3) +
-  # observed curve
-  geom_line(color = "steelblue", size = 1) +
-  # fitted model
-  geom_line(data = df_model, aes(x = sites, y = rich),
-            color = "red", size = 1) +
-  # vertical line at s_needed
-  geom_vline(xintercept = s_needed, linetype = "dashed") +
-  # annotate how many more clones
-  annotate("text",
-           x = s_needed, 
-           y = min(df_accum$rich),
-           label = paste0(additional_clones_needed, " more clones"),
-           angle = 90, vjust = 1.2) +
-  labs(
-    x     = "Number of clones sampled",
-    y     = "Cumulative unique alleles",
-    title = paste0("Rarefaction + Asymptote (", threshold*100, "%)"),
-    subtitle = paste0("Asymptote ≈ ", round(Asym,1),
-                      " | Observed final ≈ ", tail(df_accum$rich,1))
-  ) +
-  theme_minimal()
-
-CURVE
-
-ggsave(paste0(site, "_allele_curve.png"), CURVE, dpi = 300, height = 7, width = 8, bg = "white")
+paste0(length(tesclones), " natural clones found in the data.")
 
 
-#### extract samples synthetic clones needed to complete the curve
-synthetic_clones <- all_clones[grepl("_clone_", all_clones)]
-additional_synthetic_clones <- sample(synthetic_clones, additional_clones_needed)
-clones_genomic_synthetic <- filter(clones_genomic, sampleID %in% additional_synthetic_clones)
-
-
-### put everything together
-clones_genomic <- rbind(clones_genomic_TES,clones_genomic_synthetic)
+if (length(tesclones) >= 3){ ## IF THERE ARE AT LEAST 3 CLONES IN THE DATA (can do rarefaction):
+  print("Performing allele accumulationc curbve.")
+  
+  # Create the matrix
+  allele_matrix <- clones_genomic_TES %>%
+    select(sampleID, allele) %>%
+    distinct() %>%
+    mutate(present = 1) %>%
+    pivot_wider(names_from = allele, values_from = present, values_fill = 0)
+  
+  # Save sampleIDs and convert to matrix
+  sample_ids <- allele_matrix$sampleID
+  allele_matrix <- allele_matrix %>% select(-sampleID)
+  allele_matrix <- as.matrix(allele_matrix)
+  rownames(allele_matrix) <- sample_ids
+  
+  # make curve
+  spec_accum <- specaccum(allele_matrix, method = "random", )
+  
+  # 1. Build your accumulation data.frame
+  df_accum <- data.frame(
+    sites = spec_accum$sites,
+    rich  = spec_accum$rich,
+    sd    = spec_accum$sd
+  )
+  
+  # 2. Fit the SSasymp model
+  fit_asymp <- nls(rich ~ SSasymp(sites, Asym, R0, lrc), data = df_accum)
+  params    <- coef(fit_asymp)
+  Asym      <- params["Asym"]
+  R0        <- params["R0"]
+  lrc       <- params["lrc"]
+  
+  # 3. Curve completeness threshold
+  threshold <- 0.95
+  target_richness <- threshold * Asym
+  
+  # 4. Solve for the required # of clones (sites) to hit that target:
+  s_needed <- -log((target_richness - Asym)/(R0 - Asym)) / exp(lrc)
+  additional <- s_needed - max(df_accum$sites)
+  additional_clones_needed <- round(additional, 0)
+  additional_clones_needed <- ifelse(additional_clones_needed < 0, 0, additional_clones_needed) # if curve is complete, no need for more clones
+  
+  # 5. Generate model predictions up to s_needed
+  new_sites <- seq(0, s_needed, length.out = 200)
+  df_model  <- data.frame(
+    sites = new_sites,
+    rich  = predict(fit_asymp, newdata = data.frame(sites = new_sites))
+  )
+  
+  # 6. Plot everything
+  CURVE <- ggplot(df_accum, aes(x = sites, y = rich)) +
+    # ±1 SD ribbon
+    geom_ribbon(aes(ymin = rich - sd, ymax = rich + sd),
+                fill = "steelblue", alpha = 0.3) +
+    # observed curve
+    geom_line(color = "steelblue", size = 1) +
+    # fitted model
+    geom_line(data = df_model, aes(x = sites, y = rich),
+              color = "red", size = 1) +
+    # vertical line at s_needed
+    geom_vline(xintercept = s_needed, linetype = "dashed") +
+    # annotate how many more clones
+    annotate("text",
+             x = s_needed, 
+             y = min(df_accum$rich),
+             label = paste0(additional_clones_needed, " more clones"),
+             angle = 90, vjust = 1.2) +
+    labs(
+      x     = "Number of clones sampled",
+      y     = "Cumulative unique alleles",
+      title = paste0("Rarefaction + Asymptote (", threshold*100, "%)"),
+      subtitle = paste0("Asymptote ≈ ", round(Asym,1),
+                        " | Observed final ≈ ", tail(df_accum$rich,1))
+    ) +
+    theme_minimal()
+  
+  CURVE
+  
+  ggsave(paste0(site, "_allele_curve.png"), CURVE, dpi = 300, height = 7, width = 8, bg = "white")
+  
+  
+  #### extract samples synthetic clones needed to complete the curve
+  additional_synthetic_clones <- sample(synthetic_clones, additional_clones_needed)
+  clones_genomic_synthetic <- filter(clones_genomic, sampleID %in% additional_synthetic_clones)
+  
+  ### put everything together
+  clones_genomic <- rbind(clones_genomic_TES,clones_genomic_synthetic)
+  
+  
+} else { # IF LESS THAN 2 TES CLONES (can't do ratefaction), INCLUDING NONE:
+  
+  clone_cap <- 30 # sample up to 30 synthetic clones by default
+  
+  print(paste0("No clones in the data. Subsampling ", clone_cap, " synthetic clones."))
+  
+  n_clones <- clone_cap - length(tesclones)
+  
+  additional_synthetic_clones <- sample(synthetic_clones, n_clones)
+  clones_genomic_synthetic <- filter(clones_genomic, sampleID %in% additional_synthetic_clones)
+  
+  
+  ### put everything together
+  clones_genomic <- rbind(clones_genomic_TES,clones_genomic_synthetic)
+}
 
 N_CLONES <- length(unique(clones_genomic$sampleID))
 paste0("FINAL CLONES: ", N_CLONES)
+
+write.csv(clones_genomic, paste0(site, "_clones_genomic_SELECTED_FOR_TRAINING.csv"), row.names = F)
 
 
 # Check: all clones are monoallelic per locus
@@ -159,7 +181,8 @@ create_combinations_df_safe <- function(vec, k, max_combos = MAX_COMBOS) {
 }
 
 # Unique COI values > 1
-coi_values <- sort(unique(round(metadata_updated$naive_coi)))
+metadata_updated_tes <- metadata_updated[!is.na(metadata_updated$PairsID),] # only tes data
+coi_values <- sort(unique(round(metadata_updated_tes$naive_coi)))
 coi_values <- coi_values[coi_values > 1]
 
 
