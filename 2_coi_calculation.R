@@ -10,7 +10,7 @@ ECOI = FALSE
 data <- read.csv(paste0("genomic_updated_", site, ".csv"))
 data <- data %>% rename(sample_id = sampleID)
 
-data <- data[data$data_type == "tes",] # ONLY TES DATA!!!
+#data <- data[data$data_type == "tes",] # ONLY TES DATA!!!
 
 metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 
@@ -54,7 +54,7 @@ if(ECOI){
 
   naive_coi <- data %>% group_by(sample_id, locus) %>% summarise(n_alleles=length(unique(allele))) %>% group_by(sample_id) %>% summarise(naive_coi = max(n_alleles)) %>% rename(NIDA= sample_id)
   naive_coi$NIDA <- gsub("__.*", "", naive_coi$NIDA)
-  metadata_updated2 <- merge(metadata_updated, naive_coi, by = c("NIDA"))
+  metadata_updated2 <- right_join(metadata_updated, naive_coi, by = c("NIDA"))
   metadata_updated2 <- metadata_updated2 %>% arrange(SampleID)
 
 }
