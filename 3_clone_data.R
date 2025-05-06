@@ -2,39 +2,45 @@ library(dplyr)
 library(reshape2)
 library(ggplot2)
 library(tidyr)
+library(purrr)
+library(data.table)
 
-site <- "Zambezia"
+site <- "Inhambane"
 
 # Load data
 metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), 
                              stringsAsFactors = FALSE, 
                              colClasses = c(NIDA = "character"))
 
+metadata_updated$time_point <- ifelse(is.na(metadata_updated$time_point), "D0", metadata_updated$time_point) # avoid issues with NA in the site samples
+
 data <- read.csv(paste0("genomic_updated_", site, ".csv"), 
                  stringsAsFactors = FALSE, 
                  colClasses = c(sampleID = "character")) %>%
-  filter(data_type == "tes") %>%
+  #filter(data_type == "tes") %>%
   mutate(sampleID = gsub("__.*", "", sampleID))
 
-coi_stats <- read.csv(paste0("coi_stats_", site, ".csv"), 
-                      stringsAsFactors = FALSE, 
-                      colClasses = c(NIDA = "character")) %>%
-  mutate(NIDA = gsub("__.*", "", NIDA))
+coi_stats <- metadata_updated %>% select(SampleID, PairsID, NIDA, naive_coi, time_point)
+
+# coi_stats <- read.csv(paste0("coi_stats_", site, ".csv"), 
+#                       stringsAsFactors = FALSE, 
+#                       colClasses = c(NIDA = "character")) %>%
+#   mutate(NIDA = gsub("__.*", "", NIDA))
 
 # Join time_point info
-data <- left_join(data, metadata_updated[c("NIDA", "time_point")], 
+data <- left_join(data, metadata_updated[c("NIDA", "time_point", "naive_coi")], 
                   by = c("sampleID" = "NIDA"))
 
 # coi_stats <- left_join(coi_stats, metadata_updated[c("NIDA", "time_point")], 
 #                        by = "NIDA") %>%
 #   filter(time_point == "D0")
 
-# Allele frequencies
-AF <- moire::summarize_allele_freqs(readRDS(paste0("coi_mcmc_", site, ".RDS"))) %>%
-  select(locus, allele, post_allele_freqs_mean)
+# # Allele frequencies
+# AF <- moire::summarize_allele_freqs(readRDS(paste0("coi_mcmc_", site, ".RDS"))) %>%
+#   select(locus, allele, post_allele_freqs_mean)
 
 
-### 1) Separate monoclonal infections ----
+### 1) Separate monoclonal infections from D0 (tes and site) ----
 clones <- coi_stats %>%
   filter(naive_coi < 1.1) %>%
   pull(NIDA)
@@ -42,69 +48,98 @@ clones <- coi_stats %>%
 clones_genomic <- data %>%
   filter(sampleID %in% clones)
 
+clones_genomic <- clones_genomic[clones_genomic$time_point == "D0",] # only D0
+
+length(unique(clones_genomic$sampleID))
+
 
 ### 2) Create artificial clones from polyclonal infections ----
 N_CLONES <- 1000 - length(clones)
-data_polyclonal <- data %>% filter(!sampleID %in% clones)
+data_polyclonal <- data %>% filter(!sampleID %in% clones & time_point == "D0") # only D0
 
 polyclonal_samples <- unique(data_polyclonal$sampleID)
 iterations <- ceiling(N_CLONES / length(polyclonal_samples))
 
-random_draw <- function(locus_data) {
-  slice_sample(locus_data, n = 1, weight_by = post_allele_freqs_mean) %>%
-    pull(allele)
+# testing new synthetic clone sampling;
+
+clone_result <- data.frame()  # Initialize empty result data frame
+
+# Loop through each unique polyclonal sample
+for (sid in polyclonal_samples) {
+  sample_data <- data_polyclonal[data_polyclonal$sampleID == sid, ]
+  
+  for (i in 1:iterations) {
+    # Sample one allele per locus using norm.reads.locus as weights
+    sampled <- sample_data %>%
+      group_by(locus) %>%
+      slice_sample(n = 1, weight_by = norm.reads.locus, replace = TRUE) %>%
+      ungroup()
+    
+    # Add unique clone ID
+    sampled$sampleID <- paste0(sid, "__clone_", i)
+    
+    # Append to result
+    clone_result <- bind_rows(clone_result, sampled)
+  }
 }
 
-library(purrr)
-library(data.table)  # for faster data manipulation
-
-# Convert AF to data.table for speed
-AF_dt <- as.data.table(AF)
-setkey(AF_dt, locus, allele)
-
-# Pre-allocate list to store clone data
-sampled_monoclonals_list <- vector("list", length(polyclonal_samples))
-
-set.seed(42069)  # Set seed once, outside the loop
-
-for (idx in seq_along(polyclonal_samples)) {
-  sample_id <- polyclonal_samples[idx]
-  samp <- filter(data_polyclonal, sampleID == sample_id)
-  
-  allele_combinations <- samp %>%
-    select(locus, allele) %>%
-    distinct() %>%
-    left_join(AF, by = c("locus", "allele"))
-  
-  # Split by locus for faster access
-  split_locus <- split(allele_combinations, allele_combinations$locus)
-  
-  clones_per_sample <- map_dfr(seq_len(iterations), function(i) {
-    clone_id <- paste0(sample_id, "__clone_", i)
-    
-    # Sample one allele per locus
-    sampled_alleles <- map_dfr(split_locus, function(df) {
-      df %>%
-        slice_sample(n = 1, weight_by = post_allele_freqs_mean) %>%
-        select(locus, allele)
-    })
-    
-    clone_result <- sampled_alleles %>%
-      mutate(sampleID = clone_id) %>%
-      left_join(samp[c("allele", "reads", "norm.reads.locus", "data_type", "time_point")], 
-                by = "allele") %>%
-      select(sampleID, locus, allele, reads, norm.reads.locus, data_type, time_point)
-    
-    return(clone_result)
-  })
-  
-  sampled_monoclonals_list[[idx]] <- clones_per_sample
-}
-
-sampled_monoclonals <- bind_rows(sampled_monoclonals_list)
-all_clones <- bind_rows(sampled_monoclonals, clones_genomic)
+all_clones <- bind_rows(clone_result, clones_genomic)
 
 cat("Unique clones retained:", length(unique(all_clones$sampleID)), "\n")
+
+### NEEDS TO CHANGE!!!!
+# random_draw <- function(locus_data) {
+#   slice_sample(locus_data, n = 1, weight_by = post_allele_freqs_mean) %>%
+#     pull(allele)
+# }
+# 
+# # Convert AF to data.table for speed
+# AF_dt <- as.data.table(AF)
+# setkey(AF_dt, locus, allele)
+# 
+# # Pre-allocate list to store clone data
+# sampled_monoclonals_list <- vector("list", length(polyclonal_samples))
+# 
+# set.seed(42069)  # Set seed once, outside the loop
+# 
+# for (idx in seq_along(polyclonal_samples)) {
+#   sample_id <- polyclonal_samples[idx]
+#   samp <- filter(data_polyclonal, sampleID == sample_id)
+#   
+#   allele_combinations <- samp %>%
+#     select(locus, allele) %>%
+#     distinct() %>%
+#     left_join(AF, by = c("locus", "allele"))
+#   
+#   # Split by locus for faster access
+#   split_locus <- split(allele_combinations, allele_combinations$locus)
+#   
+#   clones_per_sample <- map_dfr(seq_len(iterations), function(i) {
+#     clone_id <- paste0(sample_id, "__clone_", i)
+#     
+#     # Sample one allele per locus
+#     sampled_alleles <- map_dfr(split_locus, function(df) {
+#       df %>%
+#         slice_sample(n = 1, weight_by = post_allele_freqs_mean) %>%
+#         select(locus, allele)
+#     })
+#     
+#     clone_result <- sampled_alleles %>%
+#       mutate(sampleID = clone_id) %>%
+#       left_join(samp[c("allele", "reads", "norm.reads.locus", "data_type", "time_point")], 
+#                 by = "allele") %>%
+#       select(sampleID, locus, allele, reads, norm.reads.locus, data_type, time_point)
+#     
+#     return(clone_result)
+#   })
+#   
+#   sampled_monoclonals_list[[idx]] <- clones_per_sample
+# }
+# 
+# sampled_monoclonals <- bind_rows(sampled_monoclonals_list)
+# all_clones <- bind_rows(sampled_monoclonals, clones_genomic)
+# 
+# cat("Unique clones retained:", length(unique(all_clones$sampleID)), "\n")
 
 
 ### 3) Calculate pairwise proportion of shared alleles ----
