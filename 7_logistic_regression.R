@@ -6,7 +6,7 @@ library(ggplot2)
 library(broom)
 
 
-site <- "Zambezia"
+site <- "Tete"
 
 
 ### 1) IMPORT TRAINING AND REAL DATA ----------
@@ -18,7 +18,7 @@ LABELS$labels <- as.factor(LABELS$labels)
 
 REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
-features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", "locus_concordance_rate", "conserved_haplotype_blocks", "fisher_dispersion")]
+features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "pair_type", "IBD_estimate","naive_coi_D0", "naive_coi_Dx")]
 
 corrplot::corrplot(cor(TRAINING_DATA %>% select(features_to_use), use = "complete.obs"), "pie")
 
@@ -30,6 +30,12 @@ set.seed(420)
 train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
 train_data <- TRAINING_DATA[train_indices, ]
 test_data <- TRAINING_DATA[-train_indices, ]
+
+
+## output TEST for later use in false negative tests
+test_data$PairsID <- rownames(test_data)
+test_data %>% select(PairsID, everything(), -eCOI_pairs)
+saveRDS(test_data, paste0(site, "_test_data.RDS"))
 
 # Step 2: Extract Metadata and Labels
 TRAIN_META <- train_data %>% select(-all_of(features_to_use))
@@ -75,7 +81,6 @@ print(fit_IBD)
 
 fit_IBD$finalModel
 
-### feature importance
 ### feature importance
 # Extract coefficients from the final model
 coefs <- summary(fit_IBD$finalModel)$coefficients
@@ -313,7 +318,9 @@ ggsave(paste0(site, "_sensitivity_dummy_model_comparison_LR.png"), dummy_compari
 #best_decision_thresholds$decision_threshold <- 0.5 # if wanting to use 0.5 for all real samples
 
 #add threhold data
-REAL_DATA <- left_join(REAL_DATA, best_decision_thresholds[c("eCOI_pairs", "decision_threshold")], by = c("eCOI_pairs"))
+best_decision_thresholds <- best_decision_thresholds %>% rename(pair_type = eCOI_pairs)
+
+REAL_DATA <- left_join(REAL_DATA, best_decision_thresholds[c("pair_type", "decision_threshold")], by = c("pair_type"))
 
 # Initialize a vector to store predictions
 REAL_DATA$prediction_prob <- NA
@@ -340,7 +347,7 @@ for (i in 1:nrow(REAL_DATA)) {
   REAL_DATA$predictions[i] <- prediction_class
 }
 
-REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, eCOI_pairs, c(features_to_use), decision_threshold, prediction_prob, predictions) %>% arrange(PairsID)
+REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, pair_type, c(features_to_use), decision_threshold, prediction_prob, predictions) %>% arrange(PairsID)
 
 print(REAL_DATA)
 
