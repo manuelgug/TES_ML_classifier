@@ -20,8 +20,11 @@ summary_Results <- data.frame()
 for (site in sites){
   
   data <- read.csv(paste0("genomic_updated_",site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
-  clones_genomic <- read.csv(paste0("clones_genomic_data_",site,".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+  #clones_genomic <- read.csv(paste0("clones_genomic_data_",site,".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
+  selected_clones <- read.csv(paste0(site, "_clones_genomic_SELECTED_FOR_TRAINING.csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character")) 
   metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+  metadata_updated <- metadata_updated[!is.na(metadata_updated$time_point),]
+  
   PAIRS_SUMMARY <- read.csv(paste0("PAIRS_SUMMARY_",site,".csv"))
   amps_variation <- read.csv(paste0("amps_variation_", site, ".csv"))
   
@@ -36,13 +39,11 @@ for (site in sites){
   CUM_MHE <- max(amps_variation$multilocus_He)
   
   # amount of clones across tes and site(regional) data used in the study
-  N_CLONES <- length(unique(clones_genomic$sampleID)) 
+  N_NATURAL_CLONES_D0 <- length(unique(selected_clones[!grepl("clone", selected_clones$sampleID),]$sampleID))
+  N_SYNTHETIC_CLONES_D0 <- length(unique(selected_clones[grepl("clone", selected_clones$sampleID),]$sampleID))
   
   # max (rounded to int) ecoi across tes samples
-  MAX_COI <- round(max(metadata_updated$post_effective_coi_med))
-  
-  # amount of mixes used in the study
-  N_MIXES <- sum(PAIRS_SUMMARY$unique_mixes)
+  MAX_COI <- round(max(metadata_updated$naive_coi))
   
   # amount of simulated pairs
   N_PAIRS <- sum(PAIRS_SUMMARY$n_pairs)
@@ -57,7 +58,7 @@ for (site in sites){
   R_PROP <- sum(PAIRS_SUMMARY$R_size) / N_PAIRS
   
   # row 
-  data_row <- data.frame(site, N_REGIONAL, N_LOCI, CUM_MHE, N_CLONES, MAX_COI, N_MIXES, N_PAIRS, N_PAIR_TYPES, NI_PROP, R_PROP)
+  data_row <- data.frame(site, N_REGIONAL, N_LOCI, CUM_MHE, N_NATURAL_CLONES_D0, N_SYNTHETIC_CLONES_D0, MAX_COI, N_PAIRS, N_PAIR_TYPES, NI_PROP, R_PROP)
   
   summary_Results<- rbind(summary_Results, data_row)
   
@@ -117,7 +118,7 @@ dev.off()
 
 
 
-##### 3) PREDICTION RESULTS -----
+##### 4) PREDICTION RESULTS -----
 
 predictions_Results <- data.frame()
 
@@ -136,9 +137,32 @@ for (site in sites){
 }
 
 
-predictions_Results <- predictions_Results %>% rename(pair_type = eCOI_pairs) %>% select(PairsID, Study, site, everything(), -NIDA1, -NIDA2) %>% arrange(PairsID) %>% distinct()
-predictions_Results$IBD_estimate <- as.character(predictions_Results$IBD_estimate)
+predictions_Results <- predictions_Results  %>% select(PairsID, Study, site, everything(), -NIDA1, -NIDA2) %>% arrange(PairsID) %>% distinct()
+#predictions_Results$IBD_estimate <- as.character(predictions_Results$IBD_estimate)
 
 write.csv(predictions_Results, "PREDICTION_RESULTS_ACROSS_SITES.csv", row.names = F)
 
 
+
+
+##### 5) ALLELE MATCHING RESULTS -----
+
+labels <- c("A", "B", "C", "D")
+
+image_list <- lapply(1:length(sites), function(i) {
+  img_path <- paste0(sites[i], "_allele_matching_results.png")
+  img <- rasterGrob(readPNG(img_path), interpolate = TRUE)
+  
+  gTree(children = gList(
+    img,
+    textGrob(labels[i], x = unit(0.05, "npc"), y = unit(0.95, "npc"),
+             gp = gpar(fontsize = 20, fontface = "bold"))
+  ))
+})
+
+# Save the 2x2 panel as a PNG
+png("ALLELE_MATCHING_OPTIMIZED_PERFORMANCE_RESULTS_ACROSS_SITES.png", width = 8, height = 8, units = "in", res = 300)
+
+grid.arrange(grobs = image_list, ncol = 2, nrow = 2)
+
+dev.off()
