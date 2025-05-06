@@ -2,11 +2,11 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-site <- "Inhambane"
+site <- "Zambezia"
 
 clones_genomic <- read.csv(paste0("clones_genomic_data_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
 metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
-
+metadata_updated <- metadata_updated[!is.na(metadata_updated$PairsID),] # only tes data
 #------------------------------------------------
 # 1. Determine pairs of mixes based on COIs
 #------------------------------------------------
@@ -156,10 +156,7 @@ PAIRS_summary <- PAIRS_metadata %>%
     R_size = R_prop * n_pairs
   )
 
-unique_mixes_summary <- PAIRS_metadata %>%
-  group_by(pair_type) %>%
-  summarise(unique_mixes = n_distinct(Dx_sample))
-
-PAIRS_summary <- left_join(PAIRS_summary, unique_mixes_summary, by = "pair_type")
+PAIRS_summary
 
 write.csv(PAIRS_summary, paste0("PAIRS_SUMMARY_", site, ".csv"), row.names = FALSE)
+
