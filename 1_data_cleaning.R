@@ -7,7 +7,7 @@ library(ggplot2)
 
 ####### 0) PARAMETERS------------------
 
-site <- "Tete"
+site <- "Inhambane"
 
 cum_curve_threshold <- 0.99
 
