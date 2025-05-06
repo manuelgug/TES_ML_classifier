@@ -8,9 +8,11 @@ library(tidyr)
 library(purrr)
 library(stringr)
 library(Matrix)
+library(progress)
+library(parallel)
 
 
-site <- "Inhambane"
+site <- "Tete"
 
 
 #select data type betweem "TRAINING_DATA" or "REAL_DATA"
@@ -34,6 +36,8 @@ if (DATA_TYPE == "TRAINING_DATA") {
   PAIRS_GENOMIC <- read.csv(paste0("genomic_updated_",site,".csv"))
   PAIRS_METADATA <- read.csv(paste0("metadata_updated_",site,".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
   
+  PAIRS_METADATA <- PAIRS_METADATA[!is.na(PAIRS_METADATA$time_point),]
+  
   PAIRS_GENOMIC <- as.data.table(PAIRS_GENOMIC)
   PAIRS_METADATA <- as.data.table(PAIRS_METADATA)
   
@@ -55,11 +59,14 @@ if (DATA_TYPE == "TRAINING_DATA") {
   # Step 3: Merge back into the full dataset
   PAIRS_GENOMIC <- merge(PAIRS_GENOMIC, coi_summary[, .(PairsID, pair_type)], by = "PairsID", all.x = TRUE)
   
-  
   PAIRS_METADATA <- PAIRS_METADATA %>% select(PairsID, NIDA, time_point) # format metadata file
+  
   PAIRS_METADATA <- PAIRS_METADATA %>%
     pivot_wider(names_from = time_point, values_from = NIDA, names_prefix = "NIDA") %>%
     rename(NIDA1 = NIDAD0, NIDA2 = NIDADx)
+  
+  PAIRS_METADATA <- left_join(PAIRS_METADATA, coi_summary, by = "PairsID")
+  
   
 } else {
   
@@ -69,163 +76,249 @@ if (DATA_TYPE == "TRAINING_DATA") {
 
 
 
-####### DCIFER'S IBD #######------------------  
+# # ####### DCIFER'S IBD #######------------------  
+# 
+# dsmp <- formatDat(PAIRS_GENOMIC, svar = "NIDA", lvar = "locus", avar = "allele")
+# 
+# lrank <- 2
+# coi   <- getCOI(dsmp, lrank = lrank)
+# 
+# afreq <- calcAfreq(dsmp, coi, tol = 1e-5)
+# 
+# dres0 <- ibdDat(dsmp, coi, afreq, pval = TRUE, confint = TRUE, rnull = 0,
+#                 alpha = 0.05, nr = 1e3)
+# 
+# gc()
+# 
+# suppressWarnings({
+#   dres0_long <- melt(dres0)
+# })
+# dres0_long$value <- ifelse(dres0_long$Var1 == dres0_long$Var2, 1, dres0_long$value) # put 1 if the sample is compared with itself
+# 
+# #need extra foramtting for real data after passing through dcifer because the nidas...
+# if (DATA_TYPE == "REAL_DATA"){
+# 
+#   dres0_long$Var1 <- as.character(dres0_long$Var1)
+#   dres0_long$Var2 <- as.character(dres0_long$Var2)
+#   dres0_long <- dres0_long %>%
+#     mutate(Var1 = if_else(!str_detect(Var1, "\\."), paste0(Var1, ".0"), Var1),
+#            Var2 = if_else(!str_detect(Var2, "\\."), paste0(Var2, ".0"), Var2))  # If no ".", add ".0"
+# }
+# 
+# dres0_long <- dres0_long[dres0_long$Var3 == "estimate" & !is.na(dres0_long$value),]
+# dres0_long <- dres0_long %>% select(-Var3)
+# colnames(dres0_long) <- c("infection1", "infection2", "IBD_estimate")
+# 
+# 
+# # First match: D0 with infection1 and Dx with infection2
+# match1 <- PAIRS_METADATA %>%
+#   left_join(dres0_long, by = c("NIDA1" = "infection1", "NIDA2" = "infection2")) %>%
+#   select(PairsID, NIDA1, NIDA2, IBD_estimate)
+# 
+# match1 <- match1[!is.na(match1$IBD_estimate),]
+# 
+# 
+# # Second match: Dx with infection1 and D0 with infection2
+# match2 <- PAIRS_METADATA %>%
+#   left_join(dres0_long, by = c("NIDA2" = "infection1", "NIDA1" = "infection2")) %>%
+#   select(PairsID, NIDA1, NIDA2, IBD_estimate)
+# 
+# match2 <- match2[!is.na(match2$IBD_estimate),]
+# 
+# dres0_long_final<- rbind(match1, match2)
+# dres0_long_final <- distinct(dres0_long_final)
+# 
+# dres0_long_final_summarized <- dres0_long_final %>%
+#   select(PairsID, IBD_estimate) %>%
+#   arrange(PairsID)
+# 
+# dres0_long_final_summarized <- dres0_long_final_summarized[complete.cases(dres0_long_final_summarized),]
+# 
+# # MERGE WITH METADATA
+# dres0_long_final_summarized <- merge(dres0_long_final_summarized, PAIRS_METADATA, by = "PairsID")
 
-dsmp <- formatDat(PAIRS_GENOMIC, svar = "NIDA", lvar = "locus", avar = "allele")
-
-lrank <- 2
-coi   <- getCOI(dsmp, lrank = lrank)
-
-afreq <- calcAfreq(dsmp, coi, tol = 1e-5) 
-
-dres0 <- ibdDat(dsmp, coi, afreq, pval = TRUE, confint = TRUE, rnull = 0, 
-                alpha = 0.05, nr = 1e3)   
-
-gc()
-
-suppressWarnings({
-  dres0_long <- melt(dres0)
-})
-dres0_long$value <- ifelse(dres0_long$Var1 == dres0_long$Var2, 1, dres0_long$value) # put 1 if the sample is compared with itself
-
-#need extra foramtting for real data after passing through dcifer because the nidas...
-if (DATA_TYPE == "REAL_DATA"){
-  
-  dres0_long$Var1 <- as.character(dres0_long$Var1)
-  dres0_long$Var2 <- as.character(dres0_long$Var2)
-  dres0_long <- dres0_long %>%
-    mutate(Var1 = if_else(!str_detect(Var1, "\\."), paste0(Var1, ".0"), Var1),
-           Var2 = if_else(!str_detect(Var2, "\\."), paste0(Var2, ".0"), Var2))  # If no ".", add ".0"
-}
-
-dres0_long <- dres0_long[dres0_long$Var3 == "estimate" & !is.na(dres0_long$value),]
-dres0_long <- dres0_long %>% select(-Var3)
-colnames(dres0_long) <- c("infection1", "infection2", "IBD_estimate")
-
-
-# First match: D0 with infection1 and Dx with infection2
-match1 <- PAIRS_METADATA %>%
-  left_join(dres0_long, by = c("NIDA1" = "infection1", "NIDA2" = "infection2")) %>%
-  select(PairsID, NIDA1, NIDA2, IBD_estimate)
-
-match1 <- match1[!is.na(match1$IBD_estimate),]
-
-
-# Second match: Dx with infection1 and D0 with infection2
-match2 <- PAIRS_METADATA %>%
-  left_join(dres0_long, by = c("NIDA2" = "infection1", "NIDA1" = "infection2")) %>%
-  select(PairsID, NIDA1, NIDA2, IBD_estimate)
-
-match2 <- match2[!is.na(match2$IBD_estimate),]
-
-dres0_long_final<- rbind(match1, match2)
-dres0_long_final <- distinct(dres0_long_final)
-
-dres0_long_final_summarized <- dres0_long_final %>%
-  select(PairsID, IBD_estimate) %>%
-  arrange(PairsID)
-
-dres0_long_final_summarized <- dres0_long_final_summarized[complete.cases(dres0_long_final_summarized),]
-
-# MERGE WITH METADATA
-dres0_long_final_summarized <- merge(dres0_long_final_summarized, PAIRS_METADATA, by = "PairsID")
-
-if (DATA_TYPE == "REAL_DATA"){
-  
-  metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
-  
-  metadata_updated$naive_coi <- round(metadata_updated$naive_coi)
-  
-  metadata_updated_wide <- metadata_updated %>%
-    pivot_wider(
-      id_cols = PairsID, 
-      names_from = time_point, 
-      values_from = c(NIDA, naive_coi), 
-      names_glue = "{.value}_{time_point}"
-    )
-  
-  metadata_updated_wide$eCOI_pairs <- paste0(metadata_updated_wide$naive_coi_D0, "__", metadata_updated_wide$naive_coi_Dx)
-  
-  dres0_long_final_summarized <- merge(dres0_long_final_summarized, metadata_updated_wide[c("PairsID", "eCOI_pairs")], by = "PairsID")
-  
-}
+# if (DATA_TYPE == "REAL_DATA"){
+# 
+#   metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
+# 
+#   metadata_updated <- metadata_updated[!is.na(metadata_updated$time_point),]
+#   
+#   metadata_updated$naive_coi <- round(metadata_updated$naive_coi)
+# 
+#   metadata_updated_wide <- metadata_updated %>%
+#     pivot_wider(
+#       id_cols = PairsID,
+#       names_from = time_point,
+#       values_from = c(NIDA, naive_coi),
+#       names_glue = "{.value}_{time_point}"
+#     )
+# 
+#   metadata_updated_wide$pair_type <- paste0(metadata_updated_wide$naive_coi_D0, "__", metadata_updated_wide$naive_coi_Dx)
+# 
+#   dres0_long_final_summarized <- merge(dres0_long_final_summarized, metadata_updated_wide[c("PairsID", "pair_type")], by = "PairsID")
+# 
+# }
 
 
 ####### DIVERSITY/DELTA FEATURES #######------------------
 
-# MORE COMPLEX, 6-FEATURE FUNCTION (CURRENT)
+# # MORE COMPLEX, 6-FEATURE FUNCTION (CURRENT)
 calculate_features_optimized <- function(sample1, sample2) {
-  # Extract alleles and loci
+  # 1) Unique alleles & loci
   alleles1 <- unique(sample1$allele)
-  loci1 <- unique(sample1$locus)
   alleles2 <- unique(sample2$allele)
-  loci2 <- unique(sample2$locus)
+  all_alleles <- union(alleles1, alleles2)
   
-  # Global presence/absence vectors
-  all_alleles <- unique(c(alleles1, alleles2))
-  m1 <- as.integer(all_alleles %in% alleles1)
-  m2 <- as.integer(all_alleles %in% alleles2)
+  # 2) Allele‐level intersection & union via set operations
+  inter_cnt   <- length(intersect(alleles1, alleles2))
+  union_cnt   <- length(union(alleles1, alleles2))
+  jaccard     <- if (union_cnt>0) inter_cnt/union_cnt else 0
+  retention   <- if (length(alleles1)>0) inter_cnt/length(alleles1) else 0
+  allele_gain <- if (union_cnt>0) length(setdiff(alleles2, alleles1))/union_cnt else 0
+  allele_loss <- if (union_cnt>0) length(setdiff(alleles1, alleles2))/union_cnt else 0
   
-  # Global similarity metrics
-  intersection <- sum(m1 & m2)
-  union_alleles <- sum(m1 | m2)
-  num_alleles1 <- length(alleles1)
-  num_alleles2 <- length(alleles2)
+  # 3) Transition asymmetry
+  trans_asym <- if ((allele_gain+allele_loss)>0)
+    (allele_gain - allele_loss)/(allele_gain+allele_loss) else 0
   
-  # Existing features
-  retention_rate <- intersection / num_alleles1
-  allele_gain <- sum(m2 & !m1) / union_alleles
-  allele_loss <- sum(m1 & !m2) / union_alleles
+  # 4) Prepare locus‐grouped allele lists once
+  split1 <- split(sample1$allele, sample1$locus)
+  split2 <- split(sample2$allele, sample2$locus)
+  loci   <- union(names(split1), names(split2))
+  n_loci <- length(loci)
   
-  # Initialize new feature trackers
-  discordant_loci <- 0
-  replacement_pattern_score <- 0
-  
-  # Locus-level calculations
-  all_loci <- unique(c(loci1, loci2))
-  
-  for(locus in all_loci) {
-    a1 <- unique(sample1$allele[sample1$locus == locus])
-    a2 <- unique(sample2$allele[sample2$locus == locus])
-    shared <- intersect(a1, a2)
-    
-    # --- Feature 1: Locus discordance hotspots ---
-    if(length(shared) == 0) discordant_loci <- discordant_loci + 1
-    
-    # --- Feature 7: Replacement pattern scoring ---
-    if(length(a1) > 0 || length(a2) > 0) {
-      # Replacement pattern scoring
-      if(length(a2) == 0) {
-        replacement_score <- 1  # Complete loss
-      } else if(all(a2 %in% a1)) {
-        replacement_score <- 0  # No new alleles
-      } else {
-        replacement_score <- sum(!a2 %in% a1) / length(a2)  # Partial replacement
-      }
-      replacement_pattern_score <- replacement_pattern_score + replacement_score
-    }
-  }
-  
-  # --- Feature 4: Transition asymmetry ---
-  transition_asymmetry <- ifelse((allele_gain + allele_loss) > 0,
-                                 (allele_gain - allele_loss) / (allele_gain + allele_loss),
-                                 0)
-  
-  # --- Feature 7: Replacement pattern normalization ---
-  replacement_pattern_score <- replacement_pattern_score / length(all_loci)
-  
-  return(c(
-    # Original features
-    jaccard_similarity = intersection / union_alleles,
-    allele_retention_rate = retention_rate,
-    allele_gain = allele_gain,
-    
-    # New features
-    locus_discordance_rate = discordant_loci / length(all_loci),
-    allele_transition_asymmetry = transition_asymmetry,
-    replacement_pattern_score = replacement_pattern_score
+  # 5) Compute discordant loci count
+  discordant_loci <- sum(vapply(
+    loci,
+    function(l) { length(intersect(split1[[l]] %||% character(0),
+                                   split2[[l]] %||% character(0))) == 0 },
+    logical(1)
   ))
+  
+  # 6) Compute replacement pattern sum
+  replacement_pattern_sum <- sum(vapply(
+    loci,
+    function(l) {
+      a1 <- split1[[l]] %||% character(0)
+      a2 <- split2[[l]] %||% character(0)
+      if      (length(a2)==0)         1
+      else if (all(a2 %in% a1))       0
+      else                             length(setdiff(a2, a1)) / length(a2)
+    },
+    numeric(1)
+  ))
+  
+  # 7) Final locus‐level rates
+  locus_discordance_rate    <- discordant_loci / n_loci
+  replacement_pattern_score <- replacement_pattern_sum / n_loci
+  
+  # 8) Return all features
+  c(
+    jaccard_similarity          = jaccard,
+    allele_retention_rate       = retention,
+    allele_gain                 = allele_gain,
+    locus_discordance_rate      = locus_discordance_rate,
+    allele_transition_asymmetry = trans_asym,
+    replacement_pattern_score   = replacement_pattern_score
+  )
 }
+
+
+# ### POR SI ACASO... NO BORAR, PUEDE SER ÚTIL CUANDO INTRODUZCA ERRORES:
+#
+# calculate_features_optimized <- function(sample1, sample2) {
+#   # 1) Unique alleles & loci
+#   alleles1   <- unique(sample1$allele)
+#   alleles2   <- unique(sample2$allele)
+#   all_alleles<- union(alleles1, alleles2)
+#   
+#   # 2) Allele‐level intersection & union
+#   inter_cnt  <- length(intersect(alleles1, alleles2))
+#   union_cnt  <- length(all_alleles)
+#   jaccard    <- if (union_cnt>0) inter_cnt/union_cnt else 0
+#   retention  <- if (length(alleles1)>0) inter_cnt/length(alleles1) else 0
+#   allele_gain<- if (union_cnt>0) length(setdiff(alleles2, alleles1))/union_cnt else 0
+#   allele_loss<- if (union_cnt>0) length(setdiff(alleles1, alleles2))/union_cnt else 0
+#   
+#   # 3) Transition asymmetry
+#   trans_asym <- if ((allele_gain+allele_loss)>0)
+#     (allele_gain - allele_loss)/(allele_gain+allele_loss) else 0
+#   
+#   # 4) Locus‐grouped allele lists
+#   split1 <- split(sample1$allele, sample1$locus)
+#   split2 <- split(sample2$allele, sample2$locus)
+#   loci   <- union(names(split1), names(split2))
+#   n_loci <- length(loci)
+#   
+#   # 5) Per locus: shared count and replacement score
+#   shared_counts <- integer(n_loci)
+#   share_ratios  <- numeric(n_loci)
+#   zero_bits     <- integer(n_loci)
+#   replacement_scores <- numeric(n_loci)
+#   
+#   for (i in seq_along(loci)) {
+#     l <- loci[i]
+#     a1 <- unique(split1[[l]] %||% character(0))
+#     a2 <- unique(split2[[l]] %||% character(0))
+#     
+#     S  <- length(intersect(a1, a2))
+#     U  <- length(union(a1, a2))
+#     shared_counts[i] <- S
+#     share_ratios[i]  <- if (U>0) S/U else 0
+#     zero_bits[i]     <- as.integer(S == 0)
+#     
+#     # replacement score
+#     replacement_scores[i] <- if      (length(a2)==0)         1
+#     else if (all(a2 %in% a1))       0
+#     else                             sum(!a2 %in% a1)/length(a2)
+#   }
+#   
+#   # 6) Locus‐level metrics
+#   discordant_loci        <- sum(zero_bits)
+#   replacement_pattern_sum<- sum(replacement_scores)
+#   locus_discordance_rate <- discordant_loci / n_loci
+#   replacement_pattern_score <- replacement_pattern_sum / n_loci
+#   
+#   # 7) Original allele‐level features
+#   # (jaccard, retention, allele_gain already computed above)
+#   
+#   # 8) New content‐based features
+#   avg_locus_share <- mean(share_ratios)
+#   min_locus_share <- min(share_ratios)
+#   
+#   # core_prop: alleles shared at *every* locus
+#   core_set <- Reduce(intersect, lapply(loci, function(l) {
+#     intersect(split1[[l]] %||% character(0),
+#               split2[[l]] %||% character(0))
+#   }))
+#   core_prop <- if (n_loci>0) length(core_set)/n_loci else 0
+#   
+#   richness_diff <- abs(length(alleles1) - length(alleles2))
+#   coi_ratio     <- if (length(alleles1)>0) length(alleles2)/length(alleles1) else 0
+#   
+#   # zero_run_max: longest run of unshared loci
+#   r <- rle(zero_bits)
+#   zero_run_max <- if (any(r$values==1)) max(r$lengths[r$values==1]) else 0
+#   
+#   # 9) Return all features
+#   c(
+#     # original
+#     jaccard_similarity          = jaccard,
+#     allele_retention_rate       = retention,
+#     allele_gain                 = allele_gain,
+#     locus_discordance_rate      = locus_discordance_rate,
+#     allele_transition_asymmetry = trans_asym,
+#     replacement_pattern_score   = replacement_pattern_score,
+#     
+#     # new
+#     avg_locus_share             = avg_locus_share,
+#     min_locus_share             = min_locus_share,
+#     core_prop                   = core_prop,
+#     richness_diff               = richness_diff,
+#     coi_ratio                   = coi_ratio,
+#     zero_run_max                = zero_run_max
+#   )
+# }
 
 
 # Extract unique pairs once
@@ -242,9 +335,6 @@ merged_dfs_filtered <- lapply(merged_dfs_filtered, function(df) { # reduces df s
 })
 
 gc()
-
-library(progress)
-library(parallel)
 
 # Parallel processing setup
 num_cores <- detectCores() - 0
@@ -320,7 +410,9 @@ write.csv(delta_metrics_df_final, paste0("delta_features_",site,"_", DATA_TYPE, 
 
 ##### MERGE FEATURES AND OUTPUT ------
 
-FEATURES <- left_join(dres0_long_final_summarized, delta_metrics_df_final, by = "PairsID")
+# FEATURES <- left_join(dres0_long_final_summarized, delta_metrics_df_final, by = "PairsID")
+
+FEATURES <- left_join(delta_metrics_df_final, PAIRS_METADATA, by = "PairsID")
 
 
 write.csv(FEATURES, paste0(site,"_", DATA_TYPE,".csv"), row.names = F)
