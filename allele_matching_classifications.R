@@ -13,7 +13,7 @@ library(stringr)
 # ------------------------------------------------------------------------------
 # 1. Parameters & Inputs
 # ------------------------------------------------------------------------------
-site <- "Zambezia"
+site <- "Tete"
 DATA_TYPE <- "TRAINING_DATA"  # for naming consistency
 
 # Columns and labels
@@ -30,6 +30,18 @@ allele_data <- allele_data %>%
   as.data.table()
 
 gc()
+
+# Input features testing data for subsetting
+test_data <- readRDS(paste0(site, "_test_data.RDS"))
+TEST_META <- test_data %>%
+  mutate(PairsID = as.character(PairsID),
+         labels = factor(labels, levels = c("NI", "R"))) %>%
+  select(PairsID, labels, pair_type = eCOI_pairs) %>%  # Renamed to pair_type for consistency
+  as.data.table()
+
+# Subset test data for fair comparison 
+METADATA <- METADATA[METADATA$PairsID %in% TEST_META$PairsID,]
+allele_data <- allele_data[allele_data$PairsID %in% TEST_META$PairsID,]
 
 # ------------------------------------------------------------------------------
 # 2. Pivot Allele Data for Matching Comparison (in chunks)
