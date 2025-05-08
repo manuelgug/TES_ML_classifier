@@ -10,7 +10,7 @@ library(cluster)
 #----------------------------------------------------------
 # Data Import & Preparation
 #----------------------------------------------------------
-site <- "Zambezia"
+site <- "Inhambane"
 
 TRAINING_DATA <- read.csv(paste0(site, "_TRAINING_DATA.csv"), row.names = 1)
 TRAINING_DATA$eCOI_pairs <- paste0(TRAINING_DATA$D0_nstrains, "__", TRAINING_DATA$Dx_nstrains)
@@ -22,7 +22,8 @@ REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"),
                       colClasses = c(NIDA1 = "character", NIDA2 = "character"))
 
 features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% 
-                                         c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", "locus_concordance_rate")]
+                                         c("PairsID", "NIDA1", "NIDA2", "eCOI_pairs", 
+                                           "locus_concordance_rate", "naive_coi_D0", "naive_coi_Dx", "pair_type" )]
 
 #----------------------------------------------------------
 # 1) FEATURE CORRELATIONS
@@ -57,17 +58,17 @@ distros_strat <- ggplot(training_long, aes(x = value, fill = labels, color = lab
         axis.text.x = element_text(angle = 90, hjust = 1),
         panel.border = element_rect(color = "black", fill = NA, size = 0.8) )
 
-ggsave(paste0("distributions_stratified_", site, ".png"), distros_strat, height = 8, width = 12, dpi = 300, bg= "white")
+ggsave(paste0("distributions_stratified_", site, ".png"), distros_strat, height = 12, width = 14, dpi = 300, bg= "white")
 
 #----------------------------------------------------------
 # 3) BOXPLOTS OF FEATURES: GLOBAL & STRATIFIED BY eCOI_pairs WITH WILCOX TEST P-VALUES
 #----------------------------------------------------------
 # Boxplots by label (global)
 p1 <- ggplot(training_long, aes(x = labels, y = value, fill = labels)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") +  # hide outliers
+  geom_boxplot(alpha = 1, color = "black", outlier.alpha = 0.05) +  # hide outliers; outlier.shape = NA
   facet_grid(feature ~ eCOI_pairs, scales = "free") +
   # stat_compare_means(method = "wilcox.test", label = "p.signif", label.y.npc = "top") +
-  scale_fill_brewer(palette = "Set3") +
+  #scale_fill_brewer(palette = "Set3") +
   theme_minimal(base_size = 14) +
   labs(title = "", 
        x = "Label", 
@@ -79,26 +80,25 @@ p1 <- ggplot(training_long, aes(x = labels, y = value, fill = labels)) +
     panel.border = element_rect(color = "black", fill = NA, size = 0.8)
   )
 
+ggsave(paste0("boxplots_stratified_", site, ".png"), p1, height = 12, width = 17, dpi = 300, bg= "white")
 
-ggsave(paste0("boxplots_stratified_", site, ".png"), p1, height = 10, width = 13, dpi = 300, bg= "white")
 
-
-p2 <- ggplot(training_long, aes(x = eCOI_pairs, y = value, fill = eCOI_pairs)) +
-  geom_boxplot(outlier.shape = NA, alpha = 0.8, color = "black") + #hide outliers
-  facet_wrap(~ feature, scales = "free") +
-  #stat_compare_means(method = "wilcox.test", label = "p.signif", label.y.npc = "top") +
-  scale_fill_brewer(palette = "Set3") +
-  theme_minimal(base_size = 14) +
-  labs(title = "", 
-       x = "Pair Type", 
-       y = "Value") +
-  theme(legend.position = "none",
-        strip.background = element_rect(fill = "lightgrey", color = "black"),
-        strip.text = element_text(face = "bold"),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.border = element_rect(color = "black", fill = NA, size = 0.8) )
-
-ggsave(paste0("boxplots_global_", site, ".png"), p2, height = 8, width = 13, dpi = 300, bg= "white")
+# p2 <- ggplot(training_long, aes(x = eCOI_pairs, y = value, fill = eCOI_pairs)) +
+#   geom_boxplot(alpha = 0.8, color = "black", outlier.alpha = 0.05) +  # hide outliers; outlier.shape = NA
+#   facet_wrap(~ feature, scales = "free") +
+#   #stat_compare_means(method = "wilcox.test", label = "p.signif", label.y.npc = "top") +
+#   scale_fill_brewer(palette = "Set3") +
+#   theme_minimal(base_size = 14) +
+#   labs(title = "", 
+#        x = "Pair Type", 
+#        y = "Value") +
+#   theme(legend.position = "none",
+#         strip.background = element_rect(fill = "lightgrey", color = "black"),
+#         strip.text = element_text(face = "bold"),
+#         axis.text.x = element_text(angle = 45, hjust = 1),
+#         panel.border = element_rect(color = "black", fill = NA, size = 0.8) )
+# 
+# ggsave(paste0("boxplots_global_", site, ".png"), p2, height = 8, width = 13, dpi = 300, bg= "white")
 
 
 
@@ -158,7 +158,7 @@ umap_strat <- ggplot(umap_long, aes(x = UMAP1, y = UMAP2, size = UMAP3, color = 
 
 #umap_strat
 
-ggsave(paste0("umap_stratified_", site, ".png"), umap_strat, height = 8, width = 13, dpi = 300, bg= "white")
+ggsave(paste0("umap_stratified_", site, ".png"), umap_strat, height = 13, width = 15, dpi = 300, bg= "white")
 
 
 # #----------------------------------------------------------
