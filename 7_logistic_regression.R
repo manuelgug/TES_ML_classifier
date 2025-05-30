@@ -6,7 +6,7 @@ library(ggplot2)
 library(broom)
 
 
-site <- "Tete"
+site <- "Zambezia"
 
 
 ### 1) IMPORT TRAINING AND REAL DATA ----------
@@ -18,7 +18,7 @@ LABELS$labels <- as.factor(LABELS$labels)
 
 REAL_DATA <- read.csv(paste0(site, "_REAL_DATA.csv"), stringsAsFactors = FALSE, colClasses = c(NIDA1 = "character", NIDA2= "character")) 
 
-features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "pair_type", "IBD_estimate","naive_coi_D0", "naive_coi_Dx")]
+features_to_use <- colnames(REAL_DATA)[!colnames(REAL_DATA) %in% c("PairsID", "NIDA1", "NIDA2", "pair_type", "IBD_estimate","naive_coi_D0", "naive_coi_Dx", "replacement_pattern_score")]
 
 corrplot::corrplot(cor(TRAINING_DATA %>% select(features_to_use), use = "complete.obs"), "pie")
 
