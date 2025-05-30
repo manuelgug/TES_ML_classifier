@@ -10,7 +10,7 @@ library(progress)
 
 
 # Set site
-site <- "Zambezia"
+site <- "Tete"
 
 
 #### INPUTS
@@ -36,7 +36,9 @@ TEST_META <- test_data %>%
 PAIRS_METADATA <- PAIRS_METADATA[PAIRS_METADATA$PairsID %in% TEST_META$PairsID,]
 
 
-########
+####################################################################################################################################################################
+
+
 generate_evenness_table <- function(max_clones = 7) {
   
   # Normalized Shannon index
@@ -233,13 +235,9 @@ cat("Processing complete. Total rows in FNR_ALL:", nrow(FNR_ALL), "\n")
 length(unique(FNR_ALL$PairsID))
 
 
-## PUT EVERYTHING INTO FNR_ALL
-
-############################ LOOP END!!!!!!!! ###############################
+####################################################################################################################################################################
 
 
-
-###########################################
 # # MORE COMPLEX, 6-FEATURE FUNCTION (CURRENT)
 calculate_features_optimized <- function(sample1, sample2) {
   # 1) Unique alleles & loci
@@ -394,11 +392,84 @@ for (evenness_level in eveness_levels){
 
 
 
+####################################################################################################################################################################
 
+#import
+site= "Tete"
+evenness_level = "high"
+
+df_name <- paste0("FNR_features_", evenness_level, "_evenness_" ,site, ".csv")
+data<- read.csv(df_name)
+
+data$PairsID <- as.character(data$PairsID)
 
 ###################33
 #PREDICTIONS
 #####################
+# Input model and optimal thresholds for each pair_type
+model <- readRDS(paste0("LogReg_model_", site, ".RDS"))
+thresholds <- read.csv(paste0("training_Results_LogReg_", site, ".csv"))
+thresholds <- thresholds %>% rename(pair_type = eCOI_pairs)
+
+# Predict probabilities on the test (holdout) set.. PUEDO PROBAR EL TEST DATA ORIGINAL CON newdata = test_data !!!!!!!!!!!!!!!
+TEST_META_threshs <- left_join(TEST_META, thresholds[c("pair_type", "decision_threshold")], by = "pair_type")
+TEST_META_threshs$preds_prob <- predict(model, newdata = data, type = "prob")[, "R"]
+TEST_META_threshs$preds <- ifelse(TEST_META_threshs$preds_prob >= TEST_META_threshs$decision_threshold, "R", "NI")
 
 
+# Function to calculate performance metrics
+calculate_metrics <- function(TEST_META_threshs) {
+  # Initialize an empty results dataframe
+  results <- data.frame(pair_type = character(),
+                        sensitivity = numeric(),
+                        specificity = numeric(),
+                        R_pairs = numeric(),
+                        NI_pairs = numeric(),
+                        stringsAsFactors = FALSE)
+  
+  # Loop through each unique pair_type combination
+  for (strain_comb in unique(TEST_META_threshs$pair_type)) {
+    
+    # Subset the TEST and TEST_labels based on the current combination
+    subset_indices <- TEST_META_threshs$pair_type == strain_comb
+    subset_TEST_labels <- TEST_META_threshs$labels[subset_indices]
+    
+    # Count R and NI pairs
+    r <- sum(subset_TEST_labels == "R", na.rm = TRUE)
+    ni <- sum(subset_TEST_labels == "NI", na.rm = TRUE)
+    
+    # Get the corresponding predictions for the current subset
+    subset_preds <- TEST_META_threshs$preds[subset_indices]
+    
+    # Evaluate the confusion matrix for the current subset
+    cm <- confusionMatrix(as.factor(subset_preds), as.factor(subset_TEST_labels), positive = "R")
+    
+    sens <- cm$byClass["Sensitivity"]
+    spec <- cm$byClass["Specificity"]
+    
+    # Append results
+    results <- rbind(results, data.frame(pair_type = strain_comb,
+                                         sensitivity = sens,
+                                         specificity = spec,
+                                         R_pairs = r,
+                                         NI_pairs = ni,
+                                         stringsAsFactors = FALSE))
+  }
+  
+  # Join with thresholds
+  results <- left_join(results, thresholds[c("pair_type", "decision_threshold")], by = "pair_type")
+  return(results)
+}
 
+# Calculate metrics
+results <- calculate_metrics(TEST_META_threshs)
+
+
+hist(data$jaccard_similarity)
+hist(test_data$jaccard_similarity)
+
+hist(data$locus_discordance_rate)
+hist(test_data$locus_discordance_rate)
+
+hist(data$allele_transition_asymmetry)
+hist(test_data$allele_transition_asymmetry)
