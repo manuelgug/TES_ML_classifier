@@ -12,7 +12,7 @@ library(progress)
 library(parallel)
 
 
-site <- "Tete"
+site <- "Inhambane"
 
 
 #select data type betweem "TRAINING_DATA" or "REAL_DATA"
@@ -47,14 +47,14 @@ if (DATA_TYPE == "TRAINING_DATA") {
                      separate(NIDA, into = c("NIDA", "run"), sep = "__", remove = TRUE))
   PAIRS_GENOMIC <- inner_join(PAIRS_METADATA, PAIRS_GENOMIC, by = "NIDA")
   
-  # Step 1: Extract naive_coi at D0 and Dx per PairsID
+  # Step 1: Extract offset_naive_coi at D0 and Dx per PairsID
   coi_summary <- PAIRS_GENOMIC[time_point %in% c("D0", "Dx"), 
-                               .(naive_coi_D0 = unique(naive_coi[time_point == "D0"]),
-                                 naive_coi_Dx = unique(naive_coi[time_point == "Dx"])),
+                               .(offset_naive_coi_D0 = unique(offset_naive_coi[time_point == "D0"]),
+                                 offset_naive_coi_Dx = unique(offset_naive_coi[time_point == "Dx"])),
                                by = PairsID]
   
   # Step 2: Create pair_type as "D0__Dx"
-  coi_summary[, pair_type := paste0(naive_coi_D0, "__", naive_coi_Dx)]
+  coi_summary[, pair_type := paste0(offset_naive_coi_D0, "__", offset_naive_coi_Dx)]
   
   # Step 3: Merge back into the full dataset
   PAIRS_GENOMIC <- merge(PAIRS_GENOMIC, coi_summary[, .(PairsID, pair_type)], by = "PairsID", all.x = TRUE)
@@ -143,17 +143,17 @@ if (DATA_TYPE == "TRAINING_DATA") {
 # 
 #   metadata_updated <- metadata_updated[!is.na(metadata_updated$time_point),]
 #   
-#   metadata_updated$naive_coi <- round(metadata_updated$naive_coi)
+#   metadata_updated$offset_naive_coi <- round(metadata_updated$offset_naive_coi)
 # 
 #   metadata_updated_wide <- metadata_updated %>%
 #     pivot_wider(
 #       id_cols = PairsID,
 #       names_from = time_point,
-#       values_from = c(NIDA, naive_coi),
+#       values_from = c(NIDA, offset_naive_coi),
 #       names_glue = "{.value}_{time_point}"
 #     )
 # 
-#   metadata_updated_wide$pair_type <- paste0(metadata_updated_wide$naive_coi_D0, "__", metadata_updated_wide$naive_coi_Dx)
+#   metadata_updated_wide$pair_type <- paste0(metadata_updated_wide$offset_naive_coi_D0, "__", metadata_updated_wide$offset_naive_coi_Dx)
 # 
 #   dres0_long_final_summarized <- merge(dres0_long_final_summarized, metadata_updated_wide[c("PairsID", "pair_type")], by = "PairsID")
 # 
