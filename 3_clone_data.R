@@ -4,7 +4,7 @@ library(ggplot2)
 library(tidyr)
 library(purrr)
 library(data.table)
-
+ 
 site <- "Inhambane"
 
 # Load data
@@ -20,7 +20,7 @@ data <- read.csv(paste0("genomic_updated_", site, ".csv"),
   #filter(data_type == "tes") %>%
   mutate(sampleID = gsub("__.*", "", sampleID))
 
-coi_stats <- metadata_updated %>% select(SampleID, PairsID, NIDA, naive_coi, time_point)
+coi_stats <- metadata_updated %>% select(SampleID, PairsID, NIDA, offset_naive_coi, time_point)
 
 # coi_stats <- read.csv(paste0("coi_stats_", site, ".csv"), 
 #                       stringsAsFactors = FALSE, 
@@ -28,7 +28,7 @@ coi_stats <- metadata_updated %>% select(SampleID, PairsID, NIDA, naive_coi, tim
 #   mutate(NIDA = gsub("__.*", "", NIDA))
 
 # Join time_point info
-data <- left_join(data, metadata_updated[c("NIDA", "time_point", "naive_coi")], 
+data <- left_join(data, metadata_updated[c("NIDA", "time_point", "offset_naive_coi")], 
                   by = c("sampleID" = "NIDA"))
 
 # coi_stats <- left_join(coi_stats, metadata_updated[c("NIDA", "time_point")], 
@@ -41,9 +41,18 @@ data <- left_join(data, metadata_updated[c("NIDA", "time_point", "naive_coi")],
 
 
 ### 1) Separate monoclonal infections from D0 (tes and site) ----
-clones <- coi_stats %>%
-  filter(naive_coi < 1.1) %>%
-  pull(NIDA)
+# clones <- coi_stats %>%
+#   filter(offset_naive_coi < 1.1) %>%
+#   pull(NIDA)
+
+# samples with only 1 allele for each loci, regardless of offset naive coi, which sometimes considers samples with more than 1 allele because of the offset thing
+clones <- data %>%
+  group_by(sampleID, locus) %>%
+  summarise(n = n_distinct(allele), .groups = "drop") %>%
+  group_by(sampleID) %>%
+  summarise(all_single = all(n == 1), .groups = "drop") %>%
+  filter(all_single) %>%
+  pull(sampleID)
 
 clones_genomic <- data %>%
   filter(sampleID %in% clones)
