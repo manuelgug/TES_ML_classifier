@@ -5,7 +5,7 @@ library(purrr)
 library(vegan)
 
 
-site <- "Zambezia"
+site <- "Inhambane"
 initial_sample_size <- 200
 set.seed(69420) 
 
@@ -150,8 +150,8 @@ stopifnot(all(
 ))
 
 # --- 3. Create All Mixes ----
-min_coi <- round(min(metadata_updated$naive_coi))
-max_coi <- round(max(metadata_updated$naive_coi))
+min_coi <- round(min(metadata_updated$offset_naive_coi))
+max_coi <- round(max(metadata_updated$offset_naive_coi))
 
 nidas <- unique(clones_genomic$sampleID)
 
@@ -182,7 +182,7 @@ create_combinations_df_safe <- function(vec, k, max_combos = MAX_COMBOS) {
 
 # Unique COI values > 1
 metadata_updated_tes <- metadata_updated[!is.na(metadata_updated$PairsID),] # only tes data
-coi_values <- sort(unique(round(metadata_updated_tes$naive_coi)))
+coi_values <- sort(unique(round(metadata_updated_tes$offset_naive_coi)))
 coi_values <- coi_values[coi_values > 1]
 
 
