@@ -2,9 +2,8 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-site <- "Inhambane"
+site <- "Tete"
 
-clones_genomic <- read.csv(paste0("clones_genomic_data_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
 metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 metadata_updated <- metadata_updated[!is.na(metadata_updated$PairsID),] # only tes data
 #------------------------------------------------
@@ -151,7 +150,7 @@ PAIRS_summary <- PAIRS_metadata %>%
     n_pairs = n(),
     NI_prop = mean(labels == "NI"),
     R_prop = mean(labels == "R"),
-    median_shared_prop = median(shared_prop, na.rm = TRUE),
+    # median_shared_prop = median(shared_prop, na.rm = TRUE),
     NI_size = NI_prop * n_pairs,
     R_size = R_prop * n_pairs
   )
