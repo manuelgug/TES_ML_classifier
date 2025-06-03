@@ -12,11 +12,11 @@ library(progress)
 library(parallel)
 
 
-site <- "Inhambane"
+site <- "Zambezia"
 
 
 #select data type betweem "TRAINING_DATA" or "REAL_DATA"
-DATA_TYPE = "TRAINING_DATA"
+DATA_TYPE = "REAL_DATA"
 
 
 if (DATA_TYPE == "TRAINING_DATA") {
@@ -162,26 +162,86 @@ if (DATA_TYPE == "TRAINING_DATA") {
 
 ####### DIVERSITY/DELTA FEATURES #######------------------
 
-# # MORE COMPLEX, 6-FEATURE FUNCTION (CURRENT)
+# # # MORE COMPLEX, 6-FEATURE FUNCTION (CURRENT)
+# calculate_features_optimized <- function(sample1, sample2) {
+#   # 1) Unique alleles & loci
+#   alleles1 <- unique(sample1$allele)
+#   alleles2 <- unique(sample2$allele)
+#   all_alleles <- union(alleles1, alleles2)
+#   
+#   # 2) Allele‐level intersection & union via set operations
+#   inter_cnt   <- length(intersect(alleles1, alleles2))
+#   union_cnt   <- length(union(alleles1, alleles2))
+#   jaccard     <- if (union_cnt>0) inter_cnt/union_cnt else 0
+#   retention   <- if (length(alleles1)>0) inter_cnt/length(alleles1) else 0
+#   allele_gain <- if (union_cnt>0) length(setdiff(alleles2, alleles1))/union_cnt else 0
+#   allele_loss <- if (union_cnt>0) length(setdiff(alleles1, alleles2))/union_cnt else 0
+#   
+#   # 3) Transition asymmetry
+#   trans_asym <- if ((allele_gain+allele_loss)>0)
+#     (allele_gain - allele_loss)/(allele_gain+allele_loss) else 0
+#   
+#   # 4) Prepare locus‐grouped allele lists once
+#   split1 <- split(sample1$allele, sample1$locus)
+#   split2 <- split(sample2$allele, sample2$locus)
+#   loci   <- union(names(split1), names(split2))
+#   n_loci <- length(loci)
+#   
+#   # 5) Compute discordant loci count
+#   discordant_loci <- sum(vapply(
+#     loci,
+#     function(l) { length(intersect(split1[[l]] %||% character(0),
+#                                    split2[[l]] %||% character(0))) == 0 },
+#     logical(1)
+#   ))
+#   
+#   # 6) Compute replacement pattern sum
+#   replacement_pattern_sum <- sum(vapply(
+#     loci,
+#     function(l) {
+#       a1 <- split1[[l]] %||% character(0)
+#       a2 <- split2[[l]] %||% character(0)
+#       if      (length(a2)==0)         1
+#       else if (all(a2 %in% a1))       0
+#       else                             length(setdiff(a2, a1)) / length(a2)
+#     },
+#     numeric(1)
+#   ))
+#   
+#   # 7) Final locus‐level rates
+#   locus_discordance_rate    <- discordant_loci / n_loci
+#   replacement_pattern_score <- replacement_pattern_sum / n_loci
+#   
+#   # 8) Return all features
+#   c(
+#     jaccard_similarity          = jaccard,
+#     allele_retention_rate       = retention,
+#     allele_gain                 = allele_gain,
+#     locus_discordance_rate      = locus_discordance_rate,
+#     allele_transition_asymmetry = trans_asym,
+#     replacement_pattern_score   = replacement_pattern_score
+#   )
+# }
+
 calculate_features_optimized <- function(sample1, sample2) {
   # 1) Unique alleles & loci
   alleles1 <- unique(sample1$allele)
   alleles2 <- unique(sample2$allele)
   all_alleles <- union(alleles1, alleles2)
   
-  # 2) Allele‐level intersection & union via set operations
+  # 2) Allele-level intersection & union via set operations
   inter_cnt   <- length(intersect(alleles1, alleles2))
-  union_cnt   <- length(union(alleles1, alleles2))
-  jaccard     <- if (union_cnt>0) inter_cnt/union_cnt else 0
-  retention   <- if (length(alleles1)>0) inter_cnt/length(alleles1) else 0
-  allele_gain <- if (union_cnt>0) length(setdiff(alleles2, alleles1))/union_cnt else 0
-  allele_loss <- if (union_cnt>0) length(setdiff(alleles1, alleles2))/union_cnt else 0
+  union_cnt   <- length(all_alleles)
+  jaccard     <- if (union_cnt > 0) inter_cnt / union_cnt else 0
+  retention   <- if (length(alleles1) > 0) inter_cnt / length(alleles1) else 0
+  allele_gain <- if (union_cnt > 0) length(setdiff(alleles2, alleles1)) / union_cnt else 0
+  allele_loss <- if (union_cnt > 0) length(setdiff(alleles1, alleles2)) / union_cnt else 0
   
   # 3) Transition asymmetry
-  trans_asym <- if ((allele_gain+allele_loss)>0)
-    (allele_gain - allele_loss)/(allele_gain+allele_loss) else 0
+  trans_asym <- if ((allele_gain + allele_loss) > 0)
+    (allele_gain - allele_loss) / (allele_gain + allele_loss) else 0
   
-  # 4) Prepare locus‐grouped allele lists once
+  # 4) Prepare locus-grouped allele lists
   split1 <- split(sample1$allele, sample1$locus)
   split2 <- split(sample2$allele, sample2$locus)
   loci   <- union(names(split1), names(split2))
@@ -190,8 +250,10 @@ calculate_features_optimized <- function(sample1, sample2) {
   # 5) Compute discordant loci count
   discordant_loci <- sum(vapply(
     loci,
-    function(l) { length(intersect(split1[[l]] %||% character(0),
-                                   split2[[l]] %||% character(0))) == 0 },
+    function(l) {
+      length(intersect(split1[[l]] %||% character(0),
+                       split2[[l]] %||% character(0))) == 0
+    },
     logical(1)
   ))
   
@@ -201,14 +263,14 @@ calculate_features_optimized <- function(sample1, sample2) {
     function(l) {
       a1 <- split1[[l]] %||% character(0)
       a2 <- split2[[l]] %||% character(0)
-      if      (length(a2)==0)         1
-      else if (all(a2 %in% a1))       0
-      else                             length(setdiff(a2, a1)) / length(a2)
+      if      (length(a2) == 0)         1
+      else if (all(a2 %in% a1))         0
+      else                              length(setdiff(a2, a1)) / length(a2)
     },
     numeric(1)
   ))
   
-  # 7) Final locus‐level rates
+  # 7) Final locus-level rates
   locus_discordance_rate    <- discordant_loci / n_loci
   replacement_pattern_score <- replacement_pattern_sum / n_loci
   
@@ -217,11 +279,14 @@ calculate_features_optimized <- function(sample1, sample2) {
     jaccard_similarity          = jaccard,
     allele_retention_rate       = retention,
     allele_gain                 = allele_gain,
+    allele_loss                 = allele_loss,
     locus_discordance_rate      = locus_discordance_rate,
     allele_transition_asymmetry = trans_asym,
     replacement_pattern_score   = replacement_pattern_score
   )
 }
+
+
 
 
 # ### POR SI ACASO... NO BORAR, PUEDE SER ÚTIL CUANDO INTRODUZCA ERRORES:
@@ -413,6 +478,18 @@ write.csv(delta_metrics_df_final, paste0("delta_features_",site,"_", DATA_TYPE, 
 # FEATURES <- left_join(dres0_long_final_summarized, delta_metrics_df_final, by = "PairsID")
 
 FEATURES <- left_join(delta_metrics_df_final, PAIRS_METADATA, by = "PairsID")
+
+#coi change as feature
+if (DATA_TYPE == "REAL_DATA"){
+  
+  FEATURES$coi_change <- FEATURES$offset_naive_coi_Dx - FEATURES$offset_naive_coi_D0
+  
+} else {
+  
+  FEATURES$coi_change <- FEATURES$Dx_nstrains - FEATURES$D0_nstrains
+  
+}
+
 
 
 write.csv(FEATURES, paste0(site,"_", DATA_TYPE,".csv"), row.names = F)
