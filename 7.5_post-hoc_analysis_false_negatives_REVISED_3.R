@@ -10,7 +10,7 @@ library(progress)
 
 
 # Set site
-site <- "Tete"
+site <- "Zambezia"
 
 
 #### INPUTS
@@ -90,9 +90,6 @@ evenness_tbl <- generate_evenness_table(max_clones = 7)
 
 print(evenness_tbl)
 
-# Load progress package
-library(progress)
-
 # Pre-compute constants and lookups
 eveness_levels <- unique(evenness_tbl$evenness_level)
 pairsID       <- PAIRS_METADATA$PairsID
@@ -135,6 +132,10 @@ simulate_detected_alleles <- function(df, proportions = NULL, alpha = 1, beta = 
   } else if (length(proportions) != N) {
     stop("Length of proportions does not match number of clones.")
   }
+  
+  ### FORMULA
+  # the lower the alpha, the more penalized are the clones in low proportion and less penalized the clones in high proportion (steepness)
+  # beta is a scaling factor; overall severity: lower betas increase the prob of detection for all clones (less severe overall)
   
   detection_probs <- 1 - (((1 - proportions) * (N - 1) / N) ^ alpha) * beta
   detection_lookup <- setNames(detection_probs, clones)
@@ -245,19 +246,19 @@ calculate_features_optimized <- function(sample1, sample2) {
   alleles2 <- unique(sample2$allele)
   all_alleles <- union(alleles1, alleles2)
   
-  # 2) Allele‐level intersection & union via set operations
+  # 2) Allele-level intersection & union via set operations
   inter_cnt   <- length(intersect(alleles1, alleles2))
-  union_cnt   <- length(union(alleles1, alleles2))
-  jaccard     <- if (union_cnt>0) inter_cnt/union_cnt else 0
-  retention   <- if (length(alleles1)>0) inter_cnt/length(alleles1) else 0
-  allele_gain <- if (union_cnt>0) length(setdiff(alleles2, alleles1))/union_cnt else 0
-  allele_loss <- if (union_cnt>0) length(setdiff(alleles1, alleles2))/union_cnt else 0
+  union_cnt   <- length(all_alleles)
+  jaccard     <- if (union_cnt > 0) inter_cnt / union_cnt else 0
+  retention   <- if (length(alleles1) > 0) inter_cnt / length(alleles1) else 0
+  allele_gain <- if (union_cnt > 0) length(setdiff(alleles2, alleles1)) / union_cnt else 0
+  allele_loss <- if (union_cnt > 0) length(setdiff(alleles1, alleles2)) / union_cnt else 0
   
   # 3) Transition asymmetry
-  trans_asym <- if ((allele_gain+allele_loss)>0)
-    (allele_gain - allele_loss)/(allele_gain+allele_loss) else 0
+  trans_asym <- if ((allele_gain + allele_loss) > 0)
+    (allele_gain - allele_loss) / (allele_gain + allele_loss) else 0
   
-  # 4) Prepare locus‐grouped allele lists once
+  # 4) Prepare locus-grouped allele lists
   split1 <- split(sample1$allele, sample1$locus)
   split2 <- split(sample2$allele, sample2$locus)
   loci   <- union(names(split1), names(split2))
@@ -266,8 +267,10 @@ calculate_features_optimized <- function(sample1, sample2) {
   # 5) Compute discordant loci count
   discordant_loci <- sum(vapply(
     loci,
-    function(l) { length(intersect(split1[[l]] %||% character(0),
-                                   split2[[l]] %||% character(0))) == 0 },
+    function(l) {
+      length(intersect(split1[[l]] %||% character(0),
+                       split2[[l]] %||% character(0))) == 0
+    },
     logical(1)
   ))
   
@@ -277,14 +280,14 @@ calculate_features_optimized <- function(sample1, sample2) {
     function(l) {
       a1 <- split1[[l]] %||% character(0)
       a2 <- split2[[l]] %||% character(0)
-      if      (length(a2)==0)         1
-      else if (all(a2 %in% a1))       0
-      else                             length(setdiff(a2, a1)) / length(a2)
+      if      (length(a2) == 0)         1
+      else if (all(a2 %in% a1))         0
+      else                              length(setdiff(a2, a1)) / length(a2)
     },
     numeric(1)
   ))
   
-  # 7) Final locus‐level rates
+  # 7) Final locus-level rates
   locus_discordance_rate    <- discordant_loci / n_loci
   replacement_pattern_score <- replacement_pattern_sum / n_loci
   
@@ -293,6 +296,7 @@ calculate_features_optimized <- function(sample1, sample2) {
     jaccard_similarity          = jaccard,
     allele_retention_rate       = retention,
     allele_gain                 = allele_gain,
+    allele_loss                 = allele_loss,
     locus_discordance_rate      = locus_discordance_rate,
     allele_transition_asymmetry = trans_asym,
     replacement_pattern_score   = replacement_pattern_score
@@ -394,14 +398,52 @@ for (evenness_level in eveness_levels){
 
 ####################################################################################################################################################################
 
+# NOTAS PRELIMINARES:
+# 1) algo está muy mal. al introducir FNR, el modelo colapsa, no sirve; 
+# 1a) ESTOY INTRODUCIENDO RUIDO APROPIADAMENTE?? REVISAR MUY BIEN. se están quitando alelos compartidos por ambos clones, por ejemplo?
+# 1b) SE ESTÁN QUITANDO DEMASIADOS ALELOS? REVISAR MUY BIEN (inclusive en high evenness la cosa va mal..., que se supone es el best case scenario...)
+# 2) será necesario agregar datos con FNR en el traing/testing??
+# 3) por qué sale lo mismo que WGS?? es qe en realidad no hay mucho FNR??
+# 4) cuánto de FNR es razonable, entonces? (Y CÓMO SIMULARLO?)
+# 5) las distribuciones de los features sin y con FNR, en algunos casos, varían muchísimo! estoy haciendo el FNR mal o sólo mis features son demasiado sensibles?
+# 6) está em modelo overfit??
+
 #import
-site= "Tete"
 evenness_level = "high"
 
 df_name <- paste0("FNR_features_", evenness_level, "_evenness_" ,site, ".csv")
 data<- read.csv(df_name)
 
+#add coi change feature
+data$coi_change <- PAIRS_METADATA$Dx_nstrains - PAIRS_METADATA$D0_nstrains
+
 data$PairsID <- as.character(data$PairsID)
+
+# Run UMAP using uwot
+umap_res <- uwot::umap(data %>% select(-replacement_pattern_score, -locus_discordance_rate, -PairsID),
+                       n_neighbors = 15,
+                       seed = 420, 
+                       n_threads = 20, 
+                       n_components = 3,
+                       verbose = T)
+
+## CHECK ##
+# Convert the result into a data frame and rename columns
+umap_df <- as.data.frame(umap_res)
+colnames(umap_df) <- c("UMAP1", "UMAP2", "UMAP3")
+
+# Add label and eCOI_pairs information
+umap_df$label <- test_data$labels
+
+# Plot UMAP embedding colored by label and shaped by eCOI_pairs
+umap_all <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, size = UMAP3, color = label)) +
+  geom_point(size = 3, alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "", x = "UMAP1", y = "UMAP2", 
+       color = "Label", shape = "eCOI_pairs")
+
+umap_all
+
 
 ###################33
 #PREDICTIONS
