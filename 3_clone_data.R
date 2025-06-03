@@ -5,7 +5,7 @@ library(tidyr)
 library(purrr)
 library(data.table)
  
-site <- "Inhambane"
+site <- "Tete"
 
 # Load data
 metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), 
@@ -56,6 +56,8 @@ clones <- data %>%
 
 clones_genomic <- data %>%
   filter(sampleID %in% clones)
+
+clones_genomic$time_point <- ifelse(is.na(clones_genomic$time_point), "D0", clones_genomic$time_point) # avoid issues with NA in the site samples
 
 clones_genomic <- clones_genomic[clones_genomic$time_point == "D0",] # only D0
 
