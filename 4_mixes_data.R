@@ -5,7 +5,7 @@ library(purrr)
 library(vegan)
 
 
-site <- "Inhambane"
+site <- "Tete"
 initial_sample_size <- 200
 set.seed(69420) 
 
