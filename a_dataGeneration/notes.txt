@@ -1,0 +1,1 @@
+# testing the inclusion of errors in the training data using TRUTH genomic data from lab strains and lab controls (individual and mixes)
