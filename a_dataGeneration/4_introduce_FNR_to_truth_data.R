@@ -59,6 +59,8 @@ TRUTH <- read.csv("TRUTH_CLEAN.csv")
 # Get unique FNR values
 unique_fnr_values <- unique(unlist(FNRs$FNR))
 
+set.seed(420)
+
 # Apply FNR to TRUTH
 TRUTH_filtered_list <- map(unique_fnr_values, function(fnr) {
   TRUTH %>%
@@ -120,11 +122,6 @@ names(TRUTH_filtered_list)[1] <- "TRUTH"
 ## 7) proceed to next FNR combo.
 ### NOTE!! manage instances with where FNR needs to be applied to many strains have (eg: COI = 5, FNR= c(0.08, 0.14, 0.14) [one strain needs to have 0.08 and two 0.14])
   
-
-
-library(dplyr)
-library(purrr)
-library(tidyr)
 
 # Initialize storage objects
 final_sample_df <- tibble()
@@ -633,7 +630,12 @@ corrplot::corrplot(cor(TRAINING_DATA %>% select(features_to_use), use = "complet
 
 set.seed(420)
 # Step 1: Stratified Sampling by `pair_type`
-train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
+# train_indices <- createDataPartition(TRAINING_DATA$eCOI_pairs, p = 0.7, list = FALSE)
+
+# Create a combined stratification factor
+strat_group <- paste0(TRAINING_DATA$eCOI_pairs, "_", ifelse(grepl("FNR", TRAINING_DATA$PairsID), "FNR", "TRUTH"))
+train_indices <- createDataPartition(strat_group, p = 0.7, list = FALSE)
+
 train_data <- TRAINING_DATA[train_indices, ]
 test_data <- TRAINING_DATA[-train_indices, ]
 
