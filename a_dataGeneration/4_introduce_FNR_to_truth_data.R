@@ -13,8 +13,8 @@ FNRs <- FNRs %>%
   mutate(FNR = list({
     ranks <- c_across(starts_with("rank_"))
     fnrs <- c()
-    fnrs <- c(fnrs, rep(0.08, sum(ranks >= 0.03 & ranks < 0.05, na.rm = TRUE))) ### 0.08 (pulled out of my ass) FNR to strains between 0.03 and 0.05 in proportion
-    fnrs <- c(fnrs, rep(0.14, sum(ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!)
+    fnrs <- c(fnrs, rep(0.14, sum(ranks >= 0.02 & ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 2 ALLELES
+    fnrs <- c(fnrs, rep(0.15, sum(ranks < 0.02, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 3 ALLELES
     fnrs
   })) %>%
   ungroup()
@@ -101,11 +101,11 @@ FNRs <- FNRs %>%
     })
   )
 
-FNR_pairs_GENOMIC
-FNR_pairs_METADATA
-
-TRUTH_filtered_list
-TRUTH
+# FNR_pairs_GENOMIC
+# FNR_pairs_METADATA
+# 
+# TRUTH_filtered_list
+# TRUTH
 
 # ADD TRUTH DF TO THE FILTEREDLIST as element 1 FOR EASIER MANAGING
 TRUTH_filtered_list <- c(list(as.tibble(TRUTH)), TRUTH_filtered_list)
