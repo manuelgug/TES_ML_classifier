@@ -11,7 +11,7 @@ library(ggplot2)
 
 # -------------------- 0) PARAMETERS --------------------
 
-site <- "Tete"
+site <- "Zambezia"
 cum_curve_threshold <- 0.99
 main_dir <- "."
 metadata_file <- paste0("metadata_tes_", site, ".csv")
@@ -1236,14 +1236,11 @@ for (thresh in decision_thresholds) {
   # Convert probabilities to binary predictions at the current decision_threshold
   preds <- ifelse(preds_prob >= thresh, "R", "NI")
   
-  # Loop through each unique eCOI_pairs combination
   for (strain_comb in unique(TEST_META$eCOI_pairs)) {
     
-    # Subset the TEST and TEST_labels based on the current combination
     subset_indices <- TEST_META$eCOI_pairs == strain_comb
     subset_TEST_labels <- TEST_labels[subset_indices]
     
-    # Count R and NI pairs
     r <- sum(subset_TEST_labels == "R", na.rm = TRUE)
     ni <- sum(subset_TEST_labels == "NI", na.rm = TRUE)
     
@@ -1256,7 +1253,6 @@ for (thresh in decision_thresholds) {
     sens <- cm$byClass["Sensitivity"]
     spec <- cm$byClass["Specificity"]
     
-    # Append results
     results <- rbind(results, data.frame(eCOI_pairs = strain_comb,
                                          decision_threshold = thresh,
                                          sensitivity = sens,
@@ -1321,7 +1317,6 @@ best_decision_thresholds_long <- best_decision_thresholds %>%
 # Plot both Sensitivity and Specificity in the same graph
 sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, linetype = Metric)) +
   geom_line() +
-  #geom_point(data = best_decision_thresholds_long, aes(x = decision_threshold, y = log(Value)), shape = 19, size = 3, stroke = 1.5) + 
   geom_vline(data = best_decision_thresholds, aes(xintercept = decision_threshold), color = "red", linetype = "solid") +
   facet_wrap(~eCOI_pairs) +
   labs(title = "",
@@ -1334,10 +1329,8 @@ sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, li
 
 #add threhold data
 best_decision_thresholds <- best_decision_thresholds %>% rename(pair_type = eCOI_pairs)
-
 REAL_DATA <- left_join(REAL_DATA, best_decision_thresholds[c("pair_type", "decision_threshold")], by = c("pair_type"))
 
-# Initialize a vector to store predictions
 REAL_DATA$prediction_prob <- NA
 REAL_DATA$predictions <- NA
 
@@ -1348,16 +1341,13 @@ for (i in 1:nrow(REAL_DATA)) {
   
   feats <- REAL_DATA %>% select(all_of(features_to_use))
   
-  # Create a new data frame for prediction (based on the current decision_threshold)
   newdata <- feats[i, , drop = FALSE]
   
-  # Predict probabilities using the fitted logistic regression model
   prediction_prob <- predict(fit_IBD, newdata = newdata, type = "prob")[, "R"]
   
   # Classify using the current decision_threshold (instead of 0.5)
   prediction_class <- ifelse(prediction_prob >= decision_threshold, "R", "NI")
   
-  # Store the prediction in the REAL_DATA data frame
   REAL_DATA$prediction_prob[i] <- prediction_prob
   REAL_DATA$predictions[i] <- prediction_class
 }
@@ -1366,8 +1356,5 @@ REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, pair_type, c(features_t
 
 
 ## OUTPUT RESULTS 
-
 write.csv(REAL_DATA, paste0(site, "_REAL_DATA_PREDICTIONS.csv"), row.names = F)
-
 ggsave(paste0(site, "_REAL_DATA_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
-
