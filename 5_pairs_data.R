@@ -2,32 +2,31 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-site <- "Zambezia"
+site <- "Tete"
 
-clones_genomic <- read.csv(paste0("clones_genomic_data_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(sampleID = "character"))
 metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsAsFactors = FALSE, colClasses = c(NIDA = "character"))
 metadata_updated <- metadata_updated[!is.na(metadata_updated$PairsID),] # only tes data
 #------------------------------------------------
 # 1. Determine pairs of mixes based on COIs
 #------------------------------------------------
 
-metadata_updated$naive_coi <- round(metadata_updated$naive_coi)
+metadata_updated$offset_naive_coi <- round(metadata_updated$offset_naive_coi)
 
 metadata_updated_wide <- metadata_updated %>%
   pivot_wider(
     id_cols = PairsID,
     names_from = time_point,
-    values_from = c(NIDA, naive_coi),
+    values_from = c(NIDA, offset_naive_coi),
     names_glue = "{.value}_{time_point}"
   )
 
 unique_combos <- metadata_updated_wide %>%
-  distinct(naive_coi_D0, naive_coi_Dx) %>%
+  distinct(offset_naive_coi_D0, offset_naive_coi_Dx) %>%
   mutate(
-    naive_coi_D0 = paste0("mix", naive_coi_D0),
-    naive_coi_Dx = paste0("mix", naive_coi_Dx)
+    offset_naive_coi_D0 = paste0("mix", offset_naive_coi_D0),
+    offset_naive_coi_Dx = paste0("mix", offset_naive_coi_Dx)
   ) %>%
-  arrange(naive_coi_D0, naive_coi_Dx)
+  arrange(offset_naive_coi_D0, offset_naive_coi_Dx)
 
 #------------------------------------------------
 # 2. Create pairs
@@ -41,8 +40,8 @@ nidas_all <- MIXES_METADATA$NIDA
 pairs_df <- expand.grid(NIDA1 = nidas_all, NIDA2 = nidas_all, stringsAsFactors = FALSE)
 
 pairs_df <- pairs_df[rowSums(sapply(1:nrow(unique_combos), function(i) {
-  grepl(unique_combos$naive_coi_D0[i], pairs_df$NIDA1) &
-    grepl(unique_combos$naive_coi_Dx[i], pairs_df$NIDA2)
+  grepl(unique_combos$offset_naive_coi_D0[i], pairs_df$NIDA1) &
+    grepl(unique_combos$offset_naive_coi_Dx[i], pairs_df$NIDA2)
 })) > 0, ]
 
 pairs_df <- pairs_df %>%
@@ -151,7 +150,7 @@ PAIRS_summary <- PAIRS_metadata %>%
     n_pairs = n(),
     NI_prop = mean(labels == "NI"),
     R_prop = mean(labels == "R"),
-    median_shared_prop = median(shared_prop, na.rm = TRUE),
+    # median_shared_prop = median(shared_prop, na.rm = TRUE),
     NI_size = NI_prop * n_pairs,
     R_size = R_prop * n_pairs
   )

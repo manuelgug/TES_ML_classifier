@@ -5,7 +5,7 @@ library(dplyr)
 
 site <- "Inhambane"
 
-ECOI = FALSE
+MOIRE = TRUE
 
 data <- read.csv(paste0("genomic_updated_", site, ".csv"))
 data <- data %>% rename(sample_id = sampleID)
@@ -16,7 +16,7 @@ metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), stringsA
 
 
 
-if(ECOI){
+if(MOIRE){
   
   # set MOIRE parameters
   dat_filter <- moire::load_long_form_data(data)
