@@ -11,7 +11,7 @@ library(ggplot2)
 
 # -------------------- 0) PARAMETERS --------------------
 
-site <- "Zambezia"
+site <- "Tete"
 cum_curve_threshold <- 0.99
 main_dir <- "."
 metadata_file <- paste0("metadata_tes_", site, ".csv")
@@ -237,6 +237,89 @@ metadata_updated2 <- metadata_updated2 %>% arrange(SampleID)
 
 write.csv(metadata_updated2, paste0("metadata_updated_", site, ".csv"), row.names = F)
 
+
+
+
+######################################################################################################
+##### FNR CALCULATION
+######################################################################################################
+
+site = "Tete"
+
+# Load data
+metadata_updated <- read.csv(paste0("metadata_updated_", site, ".csv"), 
+                             stringsAsFactors = FALSE, 
+                             colClasses = c(NIDA = "character"))
+
+metadata_updated$time_point <- ifelse(is.na(metadata_updated$time_point), "D0", metadata_updated$time_point) # avoid issues with NA in the site samples
+
+data <- read.csv(paste0("genomic_updated_", site, ".csv"),
+                 stringsAsFactors = FALSE,
+                 colClasses = c(sampleID = "character")) %>%
+  #filter(data_type == "tes") %>%
+  mutate(sampleID = gsub("__.*", "", sampleID))
+
+
+# 2) PROPORTIONS
+# for proportions, coi should be the numver of strains, so i'm picking all loci that have n_alleles == coi for each mix and then averaging out the norm.reads.locus
+
+allele_count_per_locus <- data %>% 
+  group_by(sampleID, locus) %>%
+  summarise(n_alleles = length(unique(allele)))
+
+# Merge the two data frames by NIDA
+merged_df <- left_join(allele_count_per_locus, metadata_updated[c("NIDA", "offset_naive_coi")], by = c("sampleID" = "NIDA"))
+#merged_df <- merged_df[merged_df$offset_naive_coi > 1,] # no COI = 1
+
+# Filter rows where COI matches n_alleles: here are the loci that will be used for the proportions calculation for each mix (NIDA)
+matched_df <- merged_df %>%
+  filter(n_alleles == offset_naive_coi)
+
+# Subset labcontrols_genomic by rowwise matching of NIDA and locus from matched_df
+subset_labcontrols_genomic <- semi_join(data, matched_df, by = c("sampleID", "locus"))
+
+# keep uniques
+subset_labcontrols_genomic <- unique(subset_labcontrols_genomic)
+
+# Step 1: Rank norm.reads.locus descendingly within each NIDA and locus
+ranked_df <- subset_labcontrols_genomic %>%
+  group_by(sampleID, locus) %>%
+  arrange(desc(norm.reads.locus), .by_group = TRUE) %>%
+  mutate(rank = row_number()) %>%
+  ungroup()
+
+# Step 2: Compute the average of norm.reads.locus by rank per NIDA
+average_by_rank <- ranked_df %>%
+  group_by(sampleID, rank) %>%
+  summarise(avg_norm_reads = mean(norm.reads.locus, na.rm = TRUE), .groups = "drop") %>%
+  arrange(sampleID, rank)
+
+library(tidyr)
+
+average_by_rank_wide <- average_by_rank %>%
+  pivot_wider(
+    names_from = rank,
+    values_from = avg_norm_reads,
+    names_prefix = "rank_"
+  )
+
+FNRs <- average_by_rank_wide %>%
+  rowwise() %>%
+  mutate(FNR = list({
+    ranks <- c_across(starts_with("rank_"))
+    fnrs <- c()
+    fnrs <- c(fnrs, rep(0.14, sum(ranks >= 0.02 & ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 2 ALLELES
+    fnrs <- c(fnrs, rep(0.15, sum(ranks < 0.02, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 3 ALLELES
+    fnrs
+  })) %>%
+  ungroup()
+
+FNRs
+
+# #delete empty vectors (NO FNR APPLIED)
+FNRs <- FNRs %>% filter(lengths(FNR) > 0)
+
+write.csv(FNRs, paste0(site, "_FNRs.csv"), row.names = F)
 
 
 
