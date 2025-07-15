@@ -1180,7 +1180,7 @@ FNRs <- readRDS(paste0(site, "_FNRs.RDS"))
 if (nrow(FNRs)>0){
   
   
-  PAIRS_METADATA_ <- readRDS(paste0("PAIRS_METADATA_", site, ".RDS"))
+  PAIRS_METADATA <- readRDS(paste0("PAIRS_METADATA_", site, ".RDS"))
   PAIRS_GENOMIC <- readRDS(paste0("PAIRS_GENOMIC_" , site, ".RDS"))
   
   ## EXTRACT PAIRS THAT WILL BE FNRed
