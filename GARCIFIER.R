@@ -11,7 +11,7 @@ library(ggplot2)
 
 # -------------------- 0) PARAMETERS --------------------
 
-site <- "Tete"
+site <- "Zambezia"
 cum_curve_threshold <- 0.99
 main_dir <- "."
 metadata_file <- paste0("metadata_tes_", site, ".csv")
@@ -1544,7 +1544,7 @@ if (nrow(FNRs)>0){
   FEATURES <- FEATURES %>%
     mutate(PairsID_clean = sub("_.*", "", PairsID))
   
-  FEATURES$PairsID_clean <- as.character(FEATURES$PairsID_clean)
+  FEATURES$PairsID_clean <- as.numeric(FEATURES$PairsID_clean)
   
   ### MERGE WITH CLEAN DATA'S METADATA
   TRUTH_CLEAN<- read.csv(paste0(site, "_TRAINING_DATA.csv"))
