@@ -17,13 +17,16 @@ library(circlize)
 library(tidyr)
 library(viridis)
 
+OPTIM_AMPSET = FALSE
+cum_curve_threshold = 0.999
+
 
 TRUTH <- read.csv("pool1A_truth.csv")
 
 
-## subset pfPHAST amplicons
-madhito_amps <- read.csv("../../madhito_20amps.csv")
-TRUTH <- TRUTH[TRUTH$locus %in% madhito_amps$locus,]
+# ## subset pfPHAST amplicons
+# madhito_amps <- read.csv("../../madhito_20amps.csv")
+# TRUTH <- TRUTH[TRUTH$locus %in% madhito_amps$locus,]
 
 
 # Ignore masking, turn it into ref (.)
@@ -133,9 +136,6 @@ TRUTH_CLEAN <- TRUTH[!TRUTH$Strain %in% remove_clones,]
 # checks:
 unique(TRUTH_CLEAN$Strain)
 
-
-##  EXPORT CLEAN DATASET
-write.csv(TRUTH_CLEAN, "TRUTH_CLEAN.csv", row.names = F)
 
 
 
@@ -424,11 +424,9 @@ CONTROLS_ALL <- CONTROLS_ALL[
 
 
 
-#### KEEP PFPHAST LOCI ONLY ###
-
-madhito_amps <- read.csv("../../madhito_20amps.csv")
-
-CONTROLS_ALL <- CONTROLS_ALL[CONTROLS_ALL$locus %in% madhito_amps$locus,]
+# #### KEEP PFPHAST LOCI ONLY ###
+# madhito_amps <- read.csv("../../madhito_20amps.csv")
+# CONTROLS_ALL <- CONTROLS_ALL[CONTROLS_ALL$locus %in% madhito_amps$locus,]
 
 
 ### keep only what's in control_metadata.csv (no newer runs! avoid extra work here). this was done by hand (strain compositions)
@@ -444,9 +442,80 @@ length(keep_samples)
 CONTROLS_ALL <- CONTROLS_ALL[CONTROLS_ALL$sampleID %in% keep_samples,]
 
 
-## export
+
+##### FIND COMMON LOCI ACROSS ALL SAMPLES!
+# common loci
+loci_in_all_samples <- CONTROLS_ALL %>%
+  group_by(sampleID) %>%
+  summarise(loci = list(unique(locus)), .groups = "drop") %>%
+  pull(loci) %>%
+  reduce(intersect)
+
+# subset common loci
+CONTROLS_ALL <- CONTROLS_ALL[CONTROLS_ALL$locus %in% loci_in_all_samples,]
+TRUTH_CLEAN <- TRUTH_CLEAN[TRUTH_CLEAN$locus %in% loci_in_all_samples,]
+
+
+# if OPTIM_AMPSET = TRUE, pick the amplicons that sum up to 0.999 multillocus He; else pick the madhito's 20 that are shared across all samples.
+if (OPTIM_AMPSET) {
+  
+  heterozygosity_per_sample <- CONTROLS_ALL %>%
+    group_by(sampleID, locus) %>%
+    mutate(freq = norm.reads.locus / sum(norm.reads.locus, na.rm = TRUE)) %>%
+    summarise(heterozygosity = 1 - sum(freq^2, na.rm = TRUE), .groups = "drop")
+  
+  variability_per_locus <- heterozygosity_per_sample %>%
+    group_by(locus) %>%
+    summarise(mean_He = mean(heterozygosity, na.rm = TRUE), sd_He = sd(heterozygosity, na.rm = TRUE), .groups = "drop") %>%
+    arrange(desc(mean_He))
+  
+  
+  variability_per_locus <- variability_per_locus %>%
+    mutate(prob_identity = 1 - mean_He)
+  
+  n_loci <- nrow(variability_per_locus)
+  cumulative_He <- sapply(1:n_loci, function(i) 1 - prod(variability_per_locus$prob_identity[1:i]))
+  cum_curve <- data.frame(loci_included = 1:n_loci, multilocus_He = cumulative_He)
+  amps_var_data <- cbind(variability_per_locus, cum_curve)
+  
+  top_n_amps <- length(cum_curve$multilocus_He[cum_curve$multilocus_He < cum_curve_threshold])
+  top_var_amps <- variability_per_locus$locus[1:top_n_amps]
+  
+  # subset final amps in both datasets
+  CONTROLS_ALL <- CONTROLS_ALL[CONTROLS_ALL$locus %in% top_var_amps, ]
+  TRUTH_CLEAN <- TRUTH_CLEAN[TRUTH_CLEAN$locus %in% top_var_amps, ]
+  
+} else {
+  
+  # JUST PICK THE MADHITO AMPS
+  madhito_amps <- read.csv("madhito_20amps.csv")
+  CONTROLS_ALL <- CONTROLS_ALL[CONTROLS_ALL$locus %in% madhito_amps$locus, ]
+  TRUTH_CLEAN <- TRUTH_CLEAN[TRUTH_CLEAN$locus %in% madhito_amps$locus, ]
+    
+  # used_amps <- unique(data_all$locus)
+  # variability_per_locus2 <- left_join(variability_per_locus, madhito_amps, by = "locus") %>%
+  #   mutate(used = locus %in% used_amps, color = "selected_madhito_amps")
+  # 
+  # selected_madhito_amps <- variability_per_locus2[!is.na(variability_per_locus2$color), ] %>%
+  #   arrange(desc(mean_He)) %>%
+  #   mutate(prob_identity = 1 - mean_He)
+  # 
+  # n_loci <- nrow(selected_madhito_amps)
+  # cumulative_He <- sapply(1:n_loci, function(i) 1 - prod(selected_madhito_amps$prob_identity[1:i]))
+  # cum_curve <- data.frame(loci_included = 1:n_loci, multilocus_He = cumulative_He)
+  # amps_var_data <- cbind(selected_madhito_amps, cum_curve) %>% select(locus, mean_He, multilocus_He)
+
+}
+
+
+
+#### OUTPUTS!!!!!
+
+## export LAB DATA
 write.csv(CONTROLS_ALL, "LAB_CONTROLS_CLEAN.csv", row.names = F)
+##  EXPORT CLEAN DATASET
+write.csv(TRUTH_CLEAN, "TRUTH_CLEAN.csv", row.names = F)
 
-
-
-
+# amps used
+length(unique(CONTROLS_ALL$locus))
+length(unique(TRUTH_CLEAN$locus))
