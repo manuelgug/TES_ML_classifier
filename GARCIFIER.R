@@ -11,7 +11,7 @@ library(ggplot2)
 
 # -------------------- 0) PARAMETERS --------------------
 
-site <- "Zambezia"
+site <- "Inhambane"
 cum_curve_threshold <- 0.999
 main_dir <- "."
 metadata_file <- paste0("metadata_tes_", site, ".csv")
@@ -289,7 +289,7 @@ FNRs <- average_by_rank_wide %>%
   mutate(FNR = list({
     ranks <- c_across(starts_with("rank_"))
     fnrs <- c()
-    fnrs <- c(fnrs, rep(0.14, sum(ranks >= 0.02 & ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 2 ALLELES
+    fnrs <- c(fnrs, rep(0.10, sum(ranks >= 0.02 & ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 2 ALLELES
     fnrs <- c(fnrs, rep(0.15, sum(ranks < 0.02, na.rm = TRUE))) ### FNR of 0.15 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 3 ALLELES
     fnrs
   })) %>%
@@ -1816,12 +1816,12 @@ coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
 coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate) + 1e-8)  # avoid log(0)
 coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
 
-importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+importance <- ggplot(coefs_df, aes(x = reorder(Variable, Estimate), y = Estimate, fill = Color)) +
   geom_bar(stat = "identity") +
   coord_flip() +
   scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
   theme_minimal() +
-  labs(x = "Features", y = "log(Absolute Coefficient Value)", fill = "Coefficient Direction") +
+  labs(x = "Features", y = "Coefficient Value", fill = "Coefficient Direction") +
   theme(legend.position = "bottom")
 
 ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
@@ -1944,7 +1944,7 @@ for (i in 1:nrow(REAL_DATA)) {
   
   prediction_prob <- predict(fit_IBD, newdata = newdata, type = "prob")[, "R"]
   
-  # Classify using the current decision_threshold (instead of 0.5)
+  # Classify using the current (best) decision_threshold (instead of 0.5)
   prediction_class <- ifelse(prediction_prob >= decision_threshold, "R", "NI")
   
   REAL_DATA$prediction_prob[i] <- prediction_prob
@@ -1957,3 +1957,5 @@ REAL_DATA <- REAL_DATA %>% select(PairsID, NIDA1, NIDA2, pair_type, c(features_t
 ## OUTPUT RESULTS 
 write.csv(REAL_DATA, paste0(site, "_REAL_DATA_PREDICTIONS.csv"), row.names = F)
 ggsave(paste0(site, "_REAL_DATA_THRESHOLDS_PLOT.png"), sens_spec_plot, bg = "white", dpi = 300, height = 9, width = 12)
+
+paste0("n_amps used: ", length(unique(data_all$locus)))
