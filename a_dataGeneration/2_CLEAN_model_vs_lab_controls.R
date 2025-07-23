@@ -1,6 +1,7 @@
 
 library(dplyr)
 library(ggplot2)
+library(purrr)
 
 # createggplot2# create model with TRUTH
 
@@ -574,6 +575,7 @@ library(dplyr)
 library(tidyr)    
 library(ggplot2)  
 library(broom)
+library(glmnet)
 
 
 site <- "TRUTH_CLEAN"
@@ -636,76 +638,252 @@ table(TEST_labels)
 df_train_IBD <- data.frame(TRAIN[features_to_use], label = as.factor(TRAIN_labels))
 df_test_IBD <- data.frame(TEST[features_to_use], label = as.factor(TEST_labels))
 
-# Set up 10-fold cross-validation
-ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+# # Set up 10-fold cross-validation
+# ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+# 
+# # Re-level factor so that "R" is the positive class
+# df_train_IBD$label <- relevel(df_train_IBD$label, ref = "R")
+# 
+# # Train logistic regression model with cross-validation
+# fit_IBD <- train(label ~ ., 
+#                  data = df_train_IBD, 
+#                  method = "glm", 
+#                  family = "binomial", 
+#                  trControl = ctrl, 
+#                  metric = "ROC")
+# 
+# print(fit_IBD)
+# 
+# fit_IBD$finalModel
+# 
+# ### feature importance
+# # Extract coefficients from the final model
+# coefs <- summary(fit_IBD$finalModel)$coefficients
+# coefs_df <- as.data.frame(coefs)
+# coefs_df$Variable <- rownames(coefs_df)
+# 
+# # Remove intercept for feature importance plot
+# coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
+# 
+# # Calculate absolute coefficient values to rank by importance
+# coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate))
+# 
+# # Sort by absolute coefficient value
+# coefs_df <- coefs_df[order(coefs_df$AbsEstimate, decreasing = TRUE), ]
+# 
+# # Create a color vector (positive coefficients in blue, negative in red)
+# coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
+# 
+# 
+# # Add significance stars
+# coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
+#                                 ifelse(coefs_df$`Pr(>|z|)` < 0.01, "**",
+#                                        ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
+# 
+# # Plot with significance indicators
+# importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+#   geom_bar(stat = "identity") +
+#   geom_text(aes(label = Significance, hjust = ifelse(AbsEstimate < 0, 1.2, -0.2))) +
+#   coord_flip() +
+#   scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
+#   theme_minimal() +
+#   labs(#title = "Feature Importance in Logistic Regression Model",
+#     #subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+#     x = "Features",
+#     y = "log(Absolute Coefficient Value)",
+#     fill = "Coefficient Direction") +
+#   theme(legend.position = "bottom")
+# 
+# importance
+# 
+# ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
+# 
+# 
+# 
+# 
+# # Predict probabilities on the test (holdout) set
+# preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "prob")[, "R"]
+# 
+# # Define the range of decision_thresholds
+# decision_thresholds <- seq(0, 1, by = 0.05)
+# 
+# # Initialize an empty results dataframe
+# results <- data.frame(eCOI_pairs = character(),
+#                       decision_threshold = numeric(),
+#                       sensitivity = numeric(),
+#                       specificity = numeric(),
+#                       R_pairs = numeric(),
+#                       NI_pairs = numeric(),
+#                       stringsAsFactors = FALSE)
+# 
+# #decision_thresholds <- 0.5 # if wanting to use only 0.5 decision threshold for all pair types...
+# 
+# # Loop through each decision_threshold
+# for (thresh in decision_thresholds) {
+#   
+#   # Convert probabilities to binary predictions at the current decision_threshold
+#   preds <- ifelse(preds_prob >= thresh, "R", "NI")
+#   
+#   # Loop through each unique eCOI_pairs combination
+#   for (strain_comb in unique(TEST_META$eCOI_pairs)) {
+#     
+#     # Subset the TEST and TEST_labels based on the current combination
+#     subset_indices <- TEST_META$eCOI_pairs == strain_comb
+#     subset_TEST_labels <- TEST_labels[subset_indices]
+#     
+#     # Count R and NI pairs
+#     r <- sum(subset_TEST_labels == "R", na.rm = TRUE)
+#     ni <- sum(subset_TEST_labels == "NI", na.rm = TRUE)
+#     
+#     # Get the corresponding predictions for the current subset
+#     subset_preds <- preds[subset_indices]
+#     
+#     # Evaluate the confusion matrix for the current subset
+#     cm <- confusionMatrix(as.factor(subset_preds), as.factor(subset_TEST_labels), positive = "R")
+#     
+#     sens <- cm$byClass["Sensitivity"]
+#     spec <- cm$byClass["Specificity"]
+#     
+#     # Append results
+#     results <- rbind(results, data.frame(eCOI_pairs = strain_comb,
+#                                          decision_threshold = thresh,
+#                                          sensitivity = sens,
+#                                          specificity = spec,
+#                                          R_pairs = r,
+#                                          NI_pairs = ni,
+#                                          stringsAsFactors = FALSE))
+#   }
+# }
+# 
+# 
+# # Select the best decision_threshold per eCOI_pair based on balance between sensitivity and specificity
+# best_decision_thresholds <- results %>%
+#   mutate(youden_j = sensitivity + specificity - 1) %>%  # Compute Youden’s J
+#   group_by(eCOI_pairs) %>%
+#   slice_max(youden_j) %>%  # Select rows with the largest Youden's J
+#   #slice_min(decision_threshold, with_ties = FALSE) %>%  # If ties, pick the lowest decision_threshold
+#   slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%  # Pick decision_threshold closest to 0.5
+#   ungroup() 
+# 
+# 
+# print(best_decision_thresholds)
+# 
+# # remove those that sum 8 (total number of strains)
+# best_decision_thresholds <- best_decision_thresholds[!best_decision_thresholds$eCOI_pairs %in% c("3__5", "5__3"), ]
+# 
+# 
+# # Reshape data to long format for easy plotting
+# best_decision_thresholds_long <- best_decision_thresholds %>%
+#   select(eCOI_pairs, sensitivity, specificity) %>%
+#   pivot_longer(cols = c(sensitivity, specificity), 
+#                names_to = "Metric", 
+#                values_to = "Value")
+# 
+# # Create bar plot
+# metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
+#   geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
+#   labs(title = "",
+#        x = "Pair Type",
+#        y = "Value") +
+#   theme_minimal() +
+#   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+#   geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+#   geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")
+# 
+# metrics
+# 
+# 
+# # save model and model results
+# saveRDS(fit_IBD, paste0("LogReg_model_", site, ".RDS"))
+# write.csv(best_decision_thresholds, paste0("training_Results_LogReg_", site, ".csv"), row.names = F)
+# ggsave(paste0(site, "_model_results_LogReg.png"), metrics, bg = "white", dpi = 300, height = 7, width = 14)
+# 
+# 
+# 
+# # Reshape data into long format for plotting
+# results_long <- results %>%
+#   pivot_longer(cols = c(sensitivity, specificity), 
+#                names_to = "Metric", 
+#                values_to = "Value")
+# 
+# # Merge best_decision_thresholds to get the specific decision_threshold for each eCOI_pair
+# best_decision_thresholds_long <- best_decision_thresholds %>%
+#   select(eCOI_pairs, decision_threshold, sensitivity, specificity) %>%
+#   pivot_longer(cols = c(sensitivity, specificity), 
+#                names_to = "Metric", 
+#                values_to = "Value")
+# 
+# # Plot both Sensitivity and Specificity in the same graph
+# sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, linetype = Metric)) +
+#   geom_line() +
+#   #geom_point(data = best_decision_thresholds_long, aes(x = decision_threshold, y = log(Value)), shape = 19, size = 3, stroke = 1.5) + 
+#   geom_vline(data = best_decision_thresholds, aes(xintercept = decision_threshold), color = "red", linetype = "solid") +
+#   facet_wrap(~eCOI_pairs) +
+#   labs(title = "",
+#        x = "Decision Threshold",
+#        y = "Value") +
+#   theme_minimal()
+# 
+# sens_spec_plot
 
-# Re-level factor so that "R" is the positive class
+
+# --------------------------
+# 1) SETUP
+# --------------------------
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
 df_train_IBD$label <- relevel(df_train_IBD$label, ref = "R")
 
-# Train logistic regression model with cross-validation
-fit_IBD <- train(label ~ ., 
-                 data = df_train_IBD, 
-                 method = "glm", 
-                 family = "binomial", 
-                 trControl = ctrl, 
-                 metric = "ROC")
+# --------------------------
+# 2) TRAINING WITH GLMNET
+# --------------------------
+fit_IBD <- train(
+  label ~ .,
+  data = df_train_IBD,
+  method = "glmnet",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC",
+  tuneLength = 10
+)
 
 print(fit_IBD)
 
-fit_IBD$finalModel
-
-### feature importance
-# Extract coefficients from the final model
-coefs <- summary(fit_IBD$finalModel)$coefficients
-coefs_df <- as.data.frame(coefs)
+# --------------------------
+# 3) FEATURE IMPORTANCE (GLMNET)
+# --------------------------
+best_lambda <- fit_IBD$bestTune$lambda
+coefs <- coef(fit_IBD$finalModel, s = best_lambda)
+coefs_df <- as.data.frame(as.matrix(coefs))
+colnames(coefs_df) <- "Estimate"
 coefs_df$Variable <- rownames(coefs_df)
 
-# Remove intercept for feature importance plot
 coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
-
-# Calculate absolute coefficient values to rank by importance
-coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate))
-
-# Sort by absolute coefficient value
-coefs_df <- coefs_df[order(coefs_df$AbsEstimate, decreasing = TRUE), ]
-
-# Create a color vector (positive coefficients in blue, negative in red)
+coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate) + 1e-8)  # avoid log(0)
 coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
 
-
-# Add significance stars
-coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
-                                ifelse(coefs_df$`Pr(>|z|)` < 0.01, "**",
-                                       ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
-
-# Plot with significance indicators
-importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+importance <- ggplot(coefs_df, aes(x = reorder(Variable, Estimate), y = Estimate, fill = Color)) +
   geom_bar(stat = "identity") +
-  geom_text(aes(label = Significance, hjust = ifelse(AbsEstimate < 0, 1.2, -0.2))) +
   coord_flip() +
   scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
   theme_minimal() +
-  labs(#title = "Feature Importance in Logistic Regression Model",
-    #subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
-    x = "Features",
-    y = "log(Absolute Coefficient Value)",
-    fill = "Coefficient Direction") +
+  labs(x = "Features", y = "Coefficient Value", fill = "Coefficient Direction") +
   theme(legend.position = "bottom")
-
-importance
 
 ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
 
-
-
-
-# Predict probabilities on the test (holdout) set
+# --------------------------
+# 4) PREDICT ON TEST SET
+# --------------------------
 preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "prob")[, "R"]
 
-# Define the range of decision_thresholds
 decision_thresholds <- seq(0, 1, by = 0.05)
-
-# Initialize an empty results dataframe
 results <- data.frame(eCOI_pairs = character(),
                       decision_threshold = numeric(),
                       sensitivity = numeric(),
@@ -714,35 +892,22 @@ results <- data.frame(eCOI_pairs = character(),
                       NI_pairs = numeric(),
                       stringsAsFactors = FALSE)
 
-#decision_thresholds <- 0.5 # if wanting to use only 0.5 decision threshold for all pair types...
-
-# Loop through each decision_threshold
 for (thresh in decision_thresholds) {
-  
-  # Convert probabilities to binary predictions at the current decision_threshold
   preds <- ifelse(preds_prob >= thresh, "R", "NI")
   
-  # Loop through each unique eCOI_pairs combination
   for (strain_comb in unique(TEST_META$eCOI_pairs)) {
-    
-    # Subset the TEST and TEST_labels based on the current combination
     subset_indices <- TEST_META$eCOI_pairs == strain_comb
     subset_TEST_labels <- TEST_labels[subset_indices]
     
-    # Count R and NI pairs
     r <- sum(subset_TEST_labels == "R", na.rm = TRUE)
     ni <- sum(subset_TEST_labels == "NI", na.rm = TRUE)
     
-    # Get the corresponding predictions for the current subset
     subset_preds <- preds[subset_indices]
-    
-    # Evaluate the confusion matrix for the current subset
     cm <- confusionMatrix(as.factor(subset_preds), as.factor(subset_TEST_labels), positive = "R")
     
     sens <- cm$byClass["Sensitivity"]
     spec <- cm$byClass["Specificity"]
     
-    # Append results
     results <- rbind(results, data.frame(eCOI_pairs = strain_comb,
                                          decision_threshold = thresh,
                                          sensitivity = sens,
@@ -753,46 +918,40 @@ for (thresh in decision_thresholds) {
   }
 }
 
-
-# Select the best decision_threshold per eCOI_pair based on balance between sensitivity and specificity
+# --------------------------
+# 5) BEST THRESHOLDS (YOUDEN'S J)
+# --------------------------
 best_decision_thresholds <- results %>%
-  mutate(youden_j = sensitivity + specificity - 1) %>%  # Compute Youden’s J
+  mutate(youden_j = sensitivity + specificity - 1) %>%
   group_by(eCOI_pairs) %>%
-  slice_max(youden_j) %>%  # Select rows with the largest Youden's J
-  #slice_min(decision_threshold, with_ties = FALSE) %>%  # If ties, pick the lowest decision_threshold
-  slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%  # Pick decision_threshold closest to 0.5
-  ungroup() 
+  slice_max(youden_j) %>%
+  slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%
+  ungroup()
 
+# remove those that sum 8 (total number of strains)
+best_decision_thresholds <- best_decision_thresholds[!best_decision_thresholds$eCOI_pairs %in% c("3__5", "5__3"), ]
 
-print(best_decision_thresholds)
-
-
-# Reshape data to long format for easy plotting
 best_decision_thresholds_long <- best_decision_thresholds %>%
   select(eCOI_pairs, sensitivity, specificity) %>%
-  pivot_longer(cols = c(sensitivity, specificity), 
-               names_to = "Metric", 
+  pivot_longer(cols = c(sensitivity, specificity),
+               names_to = "Metric",
                values_to = "Value")
 
-# Create bar plot
 metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
-  geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
-  labs(title = "",
-       x = "Pair Type",
-       y = "Value") +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Pair Type", y = "Value") +
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
-  geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0.9, linetype = "solid", color = "black") +
   geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")
 
-metrics
-
-
-# save model and model results
-saveRDS(fit_IBD, paste0("LogReg_model_", site, ".RDS"))
-write.csv(best_decision_thresholds, paste0("training_Results_LogReg_", site, ".csv"), row.names = F)
-ggsave(paste0(site, "_model_results_LogReg.png"), metrics, bg = "white", dpi = 300, height = 7, width = 14)
+# --------------------------
+# 6) SAVE RESULTS
+# --------------------------
+saveRDS(fit_IBD, paste0("GLMNET_model_", site, ".RDS"))
+write.csv(best_decision_thresholds, paste0("training_Results_GLMNET_", site, ".csv"), row.names = F)
+ggsave(paste0(site, "_model_results_GLMNET.png"), metrics, bg = "white", dpi = 300, height = 5, width = 7)
 
 
 
@@ -812,15 +971,12 @@ best_decision_thresholds_long <- best_decision_thresholds %>%
 # Plot both Sensitivity and Specificity in the same graph
 sens_spec_plot <- ggplot(results_long, aes(x = decision_threshold, y = Value, linetype = Metric)) +
   geom_line() +
-  #geom_point(data = best_decision_thresholds_long, aes(x = decision_threshold, y = log(Value)), shape = 19, size = 3, stroke = 1.5) + 
   geom_vline(data = best_decision_thresholds, aes(xintercept = decision_threshold), color = "red", linetype = "solid") +
   facet_wrap(~eCOI_pairs) +
   labs(title = "",
        x = "Decision Threshold",
        y = "Value") +
   theme_minimal()
-
-sens_spec_plot
 
 
 
@@ -1483,9 +1639,9 @@ ggsave(paste0("umap_global_Lab_Controls.png"), umap_all, height = 7, width = 8, 
 
 ### PREDICT WITH THE MODEL CREATED FROM TRUTH STRAINS!
 
-model <- readRDS("LogReg_model_TRUTH_CLEAN.RDS")
+model <- readRDS("GLMNET_model_TRUTH_CLEAN.RDS")
 
-thresholds <- read.csv("training_Results_LogReg_TRUTH_CLEAN.csv")
+thresholds <- read.csv("training_Results_GLMNET_TRUTH_CLEAN.csv")
 thresholds <- thresholds %>% rename(pair_type = eCOI_pairs)
 
 
@@ -1584,7 +1740,7 @@ metrics <- ggplot(best_decision_thresholds_long, aes(x = pair_type, y = Value, f
 
 metrics
 
-ggsave(paste0("TRUTH_model_vs_Lab_Controls_LogReg.png"), metrics, bg = "white", dpi = 300, height = 7, width = 14)
+ggsave(paste0("TRUTH_model_vs_Lab_Controls_GLMNET.png"), metrics, bg = "white", dpi = 300, height = 5, width = 7)
 
 
 # TO DO:
@@ -1668,76 +1824,219 @@ table(TEST_labels)
 df_train_IBD <- data.frame(TRAIN[features_to_use], label = as.factor(TRAIN_labels))
 df_test_IBD <- data.frame(TEST[features_to_use], label = as.factor(TEST_labels))
 
-# Set up 10-fold cross-validation
-ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+# # Set up 10-fold cross-validation
+# ctrl <- trainControl(method = "cv", number = 10, classProbs = TRUE, summaryFunction = twoClassSummary)
+# 
+# # Re-level factor so that "R" is the positive class
+# df_train_IBD$label <- relevel(df_train_IBD$label, ref = "R")
+# 
+# # Train logistic regression model with cross-validation
+# fit_IBD <- train(label ~ ., 
+#                  data = df_train_IBD, 
+#                  method = "glm", 
+#                  family = "binomial", 
+#                  trControl = ctrl, 
+#                  metric = "ROC")
+# 
+# print(fit_IBD)
+# 
+# fit_IBD$finalModel
+# 
+# ### feature importance
+# # Extract coefficients from the final model
+# coefs <- summary(fit_IBD$finalModel)$coefficients
+# coefs_df <- as.data.frame(coefs)
+# coefs_df$Variable <- rownames(coefs_df)
+# 
+# # Remove intercept for feature importance plot
+# coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
+# 
+# # Calculate absolute coefficient values to rank by importance
+# coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate))
+# 
+# # Sort by absolute coefficient value
+# coefs_df <- coefs_df[order(coefs_df$AbsEstimate, decreasing = TRUE), ]
+# 
+# # Create a color vector (positive coefficients in blue, negative in red)
+# coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
+# 
+# 
+# # Add significance stars
+# coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
+#                                 ifelse(coefs_df$`Pr(>|z|)` < 0.01, "**",
+#                                        ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
+# 
+# # Plot with significance indicators
+# importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+#   geom_bar(stat = "identity") +
+#   geom_text(aes(label = Significance, hjust = ifelse(AbsEstimate < 0, 1.2, -0.2))) +
+#   coord_flip() +
+#   scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
+#   theme_minimal() +
+#   labs(#title = "Feature Importance in Logistic Regression Model",
+#     #subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
+#     x = "Features",
+#     y = "log(Absolute Coefficient Value)",
+#     fill = "Coefficient Direction") +
+#   theme(legend.position = "bottom")
+# 
+# importance
+# 
+# ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
+# 
+# 
+# 
+# 
+# # Predict probabilities on the test (holdout) set
+# preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "prob")[, "R"]
+# 
+# # Define the range of decision_thresholds
+# decision_thresholds <- seq(0, 1, by = 0.05)
+# 
+# # Initialize an empty results dataframe
+# results <- data.frame(eCOI_pairs = character(),
+#                       decision_threshold = numeric(),
+#                       sensitivity = numeric(),
+#                       specificity = numeric(),
+#                       R_pairs = numeric(),
+#                       NI_pairs = numeric(),
+#                       stringsAsFactors = FALSE)
+# 
+# #decision_thresholds <- 0.5 # if wanting to use only 0.5 decision threshold for all pair types...
+# 
+# # Loop through each decision_threshold
+# for (thresh in decision_thresholds) {
+#   
+#   # Convert probabilities to binary predictions at the current decision_threshold
+#   preds <- ifelse(preds_prob >= thresh, "R", "NI")
+#   
+#   # Loop through each unique eCOI_pairs combination
+#   for (strain_comb in unique(TEST_META$eCOI_pairs)) {
+#     
+#     # Subset the TEST and TEST_labels based on the current combination
+#     subset_indices <- TEST_META$eCOI_pairs == strain_comb
+#     subset_TEST_labels <- TEST_labels[subset_indices]
+#     
+#     # Count R and NI pairs
+#     r <- sum(subset_TEST_labels == "R", na.rm = TRUE)
+#     ni <- sum(subset_TEST_labels == "NI", na.rm = TRUE)
+#     
+#     # Get the corresponding predictions for the current subset
+#     subset_preds <- preds[subset_indices]
+#     
+#     # Evaluate the confusion matrix for the current subset
+#     cm <- confusionMatrix(as.factor(subset_preds), as.factor(subset_TEST_labels), positive = "R")
+#     
+#     sens <- cm$byClass["Sensitivity"]
+#     spec <- cm$byClass["Specificity"]
+#     
+#     # Append results
+#     results <- rbind(results, data.frame(eCOI_pairs = strain_comb,
+#                                          decision_threshold = thresh,
+#                                          sensitivity = sens,
+#                                          specificity = spec,
+#                                          R_pairs = r,
+#                                          NI_pairs = ni,
+#                                          stringsAsFactors = FALSE))
+#   }
+# }
+# 
+# results <- results[complete.cases(results),]
+# 
+# # Select the best decision_threshold per eCOI_pair based on balance between sensitivity and specificity
+# best_decision_thresholds <- results %>%
+#   mutate(youden_j = sensitivity + specificity - 1) %>%  # Compute Youden’s J
+#   group_by(eCOI_pairs) %>%
+#   slice_max(youden_j) %>%  # Select rows with the largest Youden's J
+#   #slice_min(decision_threshold, with_ties = FALSE) %>%  # If ties, pick the lowest decision_threshold
+#   slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%  # Pick decision_threshold closest to 0.5
+#   ungroup() 
+# 
+# 
+# print(best_decision_thresholds)
+# 
+# 
+# # Reshape data to long format for easy plotting
+# best_decision_thresholds_long <- best_decision_thresholds %>%
+#   select(eCOI_pairs, sensitivity, specificity) %>%
+#   pivot_longer(cols = c(sensitivity, specificity), 
+#                names_to = "Metric", 
+#                values_to = "Value")
+# 
+# # Create bar plot
+# metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
+#   geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
+#   labs(title = "",
+#        x = "Pair Type",
+#        y = "Value") +
+#   theme_minimal() +
+#   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
+#   geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+#   geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")
+# 
+# metrics
+# 
+# ggsave(paste0("Lab_controls_model_vs_Lab_Controls_LogReg.png"), metrics, bg = "white", dpi = 300, height = 7, width = 14)
+# 
 
-# Re-level factor so that "R" is the positive class
+
+# --------------------------
+# 1) SETUP
+# --------------------------
+ctrl <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary
+)
+
 df_train_IBD$label <- relevel(df_train_IBD$label, ref = "R")
 
-# Train logistic regression model with cross-validation
-fit_IBD <- train(label ~ ., 
-                 data = df_train_IBD, 
-                 method = "glm", 
-                 family = "binomial", 
-                 trControl = ctrl, 
-                 metric = "ROC")
+# --------------------------
+# 2) TRAINING WITH GLMNET
+# --------------------------
+fit_IBD <- train(
+  label ~ .,
+  data = df_train_IBD,
+  method = "glmnet",
+  family = "binomial",
+  trControl = ctrl,
+  metric = "ROC",
+  tuneLength = 10
+)
 
 print(fit_IBD)
 
-fit_IBD$finalModel
-
-### feature importance
-# Extract coefficients from the final model
-coefs <- summary(fit_IBD$finalModel)$coefficients
-coefs_df <- as.data.frame(coefs)
+# --------------------------
+# 3) FEATURE IMPORTANCE (GLMNET)
+# --------------------------
+best_lambda <- fit_IBD$bestTune$lambda
+coefs <- coef(fit_IBD$finalModel, s = best_lambda)
+coefs_df <- as.data.frame(as.matrix(coefs))
+colnames(coefs_df) <- "Estimate"
 coefs_df$Variable <- rownames(coefs_df)
 
-# Remove intercept for feature importance plot
 coefs_df <- coefs_df[coefs_df$Variable != "(Intercept)", ]
-
-# Calculate absolute coefficient values to rank by importance
-coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate))
-
-# Sort by absolute coefficient value
-coefs_df <- coefs_df[order(coefs_df$AbsEstimate, decreasing = TRUE), ]
-
-# Create a color vector (positive coefficients in blue, negative in red)
+coefs_df$AbsEstimate <- log(abs(coefs_df$Estimate) + 1e-8)  # avoid log(0)
 coefs_df$Color <- ifelse(coefs_df$Estimate > 0, "positive", "negative")
 
-
-# Add significance stars
-coefs_df$Significance <- ifelse(coefs_df$`Pr(>|z|)` < 0.001, "***",
-                                ifelse(coefs_df$`Pr(>|z|)` < 0.01, "**",
-                                       ifelse(coefs_df$`Pr(>|z|)` < 0.05, "*", "")))
-
-# Plot with significance indicators
-importance <- ggplot(coefs_df, aes(x = reorder(Variable, AbsEstimate), y = AbsEstimate, fill = Color)) +
+importance <- ggplot(coefs_df, aes(x = reorder(Variable, Estimate), y = Estimate, fill = Color)) +
   geom_bar(stat = "identity") +
-  geom_text(aes(label = Significance, hjust = ifelse(AbsEstimate < 0, 1.2, -0.2))) +
   coord_flip() +
   scale_fill_manual(values = c("positive" = "steelblue", "negative" = "firebrick")) +
   theme_minimal() +
-  labs(#title = "Feature Importance in Logistic Regression Model",
-    #subtitle = "* p<0.05, ** p<0.01, *** p<0.001",
-    x = "Features",
-    y = "log(Absolute Coefficient Value)",
-    fill = "Coefficient Direction") +
+  labs(x = "Features", y = "Coefficient Value", fill = "Coefficient Direction") +
   theme(legend.position = "bottom")
-
-importance
 
 ggsave(paste0("feat_importance_", site, ".png"), importance, bg = "white", dpi = 300, height = 5, width = 8)
 
-
-
-
-# Predict probabilities on the test (holdout) set
+# --------------------------
+# 4) PREDICT ON TEST SET
+# --------------------------
 preds_prob <- predict(fit_IBD, newdata = df_test_IBD, type = "prob")[, "R"]
 
-# Define the range of decision_thresholds
 decision_thresholds <- seq(0, 1, by = 0.05)
-
-# Initialize an empty results dataframe
 results <- data.frame(eCOI_pairs = character(),
                       decision_threshold = numeric(),
                       sensitivity = numeric(),
@@ -1746,35 +2045,22 @@ results <- data.frame(eCOI_pairs = character(),
                       NI_pairs = numeric(),
                       stringsAsFactors = FALSE)
 
-#decision_thresholds <- 0.5 # if wanting to use only 0.5 decision threshold for all pair types...
-
-# Loop through each decision_threshold
 for (thresh in decision_thresholds) {
-  
-  # Convert probabilities to binary predictions at the current decision_threshold
   preds <- ifelse(preds_prob >= thresh, "R", "NI")
   
-  # Loop through each unique eCOI_pairs combination
   for (strain_comb in unique(TEST_META$eCOI_pairs)) {
-    
-    # Subset the TEST and TEST_labels based on the current combination
     subset_indices <- TEST_META$eCOI_pairs == strain_comb
     subset_TEST_labels <- TEST_labels[subset_indices]
     
-    # Count R and NI pairs
     r <- sum(subset_TEST_labels == "R", na.rm = TRUE)
     ni <- sum(subset_TEST_labels == "NI", na.rm = TRUE)
     
-    # Get the corresponding predictions for the current subset
     subset_preds <- preds[subset_indices]
-    
-    # Evaluate the confusion matrix for the current subset
     cm <- confusionMatrix(as.factor(subset_preds), as.factor(subset_TEST_labels), positive = "R")
     
     sens <- cm$byClass["Sensitivity"]
     spec <- cm$byClass["Specificity"]
     
-    # Append results
     results <- rbind(results, data.frame(eCOI_pairs = strain_comb,
                                          decision_threshold = thresh,
                                          sensitivity = sens,
@@ -1785,41 +2071,29 @@ for (thresh in decision_thresholds) {
   }
 }
 
-results <- results[complete.cases(results),]
-
-# Select the best decision_threshold per eCOI_pair based on balance between sensitivity and specificity
+# --------------------------
+# 5) BEST THRESHOLDS (YOUDEN'S J)
+# --------------------------
 best_decision_thresholds <- results %>%
-  mutate(youden_j = sensitivity + specificity - 1) %>%  # Compute Youden’s J
+  mutate(youden_j = sensitivity + specificity - 1) %>%
   group_by(eCOI_pairs) %>%
-  slice_max(youden_j) %>%  # Select rows with the largest Youden's J
-  #slice_min(decision_threshold, with_ties = FALSE) %>%  # If ties, pick the lowest decision_threshold
-  slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%  # Pick decision_threshold closest to 0.5
-  ungroup() 
+  slice_max(youden_j) %>%
+  slice_min(abs(decision_threshold - 0.5), with_ties = FALSE) %>%
+  ungroup()
 
-
-print(best_decision_thresholds)
-
-
-# Reshape data to long format for easy plotting
 best_decision_thresholds_long <- best_decision_thresholds %>%
   select(eCOI_pairs, sensitivity, specificity) %>%
-  pivot_longer(cols = c(sensitivity, specificity), 
-               names_to = "Metric", 
+  pivot_longer(cols = c(sensitivity, specificity),
+               names_to = "Metric",
                values_to = "Value")
 
-# Create bar plot
 metrics <- ggplot(best_decision_thresholds_long, aes(x = eCOI_pairs, y = Value, fill = Metric)) +
-  geom_bar(stat = "identity", position = "dodge") +  # Dodge separates bars for clarity
-  labs(title = "",
-       x = "Pair Type",
-       y = "Value") +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Pair Type", y = "Value") +
   theme_minimal() +
   scale_fill_manual(values = c("sensitivity" = "#008080", "specificity" = "orange")) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+ 
-  geom_hline(yintercept = 0.9, linetype = "solid", color = "black")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_hline(yintercept = 0.9, linetype = "solid", color = "black") +
   geom_hline(yintercept = 0.80, linetype = "dashed", color = "black")
 
 metrics
-
-ggsave(paste0("Lab_controls_model_vs_Lab_Controls_LogReg.png"), metrics, bg = "white", dpi = 300, height = 7, width = 14)
-
