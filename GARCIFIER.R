@@ -11,7 +11,7 @@ library(ggplot2)
 
 # -------------------- 0) PARAMETERS --------------------
 
-site <- "Inhambane"
+site <- "Tete"
 cum_curve_threshold <- 0.999
 main_dir <- "."
 metadata_file <- paste0("metadata_tes_", site, ".csv")
@@ -162,19 +162,19 @@ if (OPTIM_AMPSET) {
   madhito_amps <- read.csv("madhito_20amps.csv")
   data_all <- data_all[data_all$locus %in% madhito_amps$locus, ]
   
-  used_amps <- unique(data_all$locus)
-  variability_per_locus2 <- left_join(variability_per_locus, madhito_amps, by = "locus") %>%
-    mutate(used = locus %in% used_amps, color = "selected_madhito_amps")
-  
-  selected_madhito_amps <- variability_per_locus2[!is.na(variability_per_locus2$color), ] %>%
-    arrange(desc(mean_He)) %>%
-    mutate(prob_identity = 1 - mean_He)
-  
-  n_loci <- nrow(selected_madhito_amps)
-  cumulative_He <- sapply(1:n_loci, function(i) 1 - prod(selected_madhito_amps$prob_identity[1:i]))
-  cum_curve <- data.frame(loci_included = 1:n_loci, multilocus_He = cumulative_He)
-  amps_var_data <- cbind(selected_madhito_amps, cum_curve) %>% select(locus, mean_He, multilocus_He)
-  
+  # used_amps <- unique(data_all$locus)
+  # variability_per_locus2 <- left_join(variability_per_locus, madhito_amps, by = "locus") %>%
+  #   mutate(used = locus %in% used_amps, color = "selected_madhito_amps")
+  # 
+  # selected_madhito_amps <- variability_per_locus2[!is.na(variability_per_locus2$color), ] %>%
+  #   arrange(desc(mean_He)) %>%
+  #   mutate(prob_identity = 1 - mean_He)
+  # 
+  # n_loci <- nrow(selected_madhito_amps)
+  # cumulative_He <- sapply(1:n_loci, function(i) 1 - prod(selected_madhito_amps$prob_identity[1:i]))
+  # cum_curve <- data.frame(loci_included = 1:n_loci, multilocus_He = cumulative_He)
+  # amps_var_data <- cbind(selected_madhito_amps, cum_curve) %>% select(locus, mean_He, multilocus_He)
+  # 
   #write.csv(amps_var_data, paste0("amps_variation_", site, ".csv"), row.names = FALSE)
 }
 
@@ -289,8 +289,8 @@ FNRs <- average_by_rank_wide %>%
   mutate(FNR = list({
     ranks <- c_across(starts_with("rank_"))
     fnrs <- c()
-    fnrs <- c(fnrs, rep(0.10, sum(ranks >= 0.02 & ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 2 ALLELES
-    fnrs <- c(fnrs, rep(0.15, sum(ranks < 0.02, na.rm = TRUE))) ### FNR of 0.15 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 3 ALLELES
+    fnrs <- c(fnrs, rep(0.11, sum(ranks >= 0.02 & ranks < 0.03, na.rm = TRUE))) ### FNR of 0.14 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 2 ALLELES
+    fnrs <- c(fnrs, rep(0.16, sum(ranks < 0.02, na.rm = TRUE))) ### FNR of 0.15 for strains below 0.03 (experimentally checked with the lab controls dataset!) == DROP 3 ALLELES
     fnrs
   })) %>%
   ungroup()
@@ -777,7 +777,7 @@ ggsave(paste0("mixes_EDA_", site, "_", N_CLONES, "_clones.png"), allele_plot, wi
 
 
 ######################################################################################################
-##### GENERATE MIX DATA
+##### GENERATE PAIRS DATA
 ######################################################################################################
 
 library(dplyr)
